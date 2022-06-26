@@ -35,9 +35,8 @@ type Config struct {
 
 	Timeout *Timeout
 
-	PingInterval    int
-	TriggerInterval int
-	TriggerOnStart  bool
+	PingInterval   int
+	TriggerOnStart bool
 
 	MagicKey    []byte
 	PrivateMask []byte
@@ -67,7 +66,7 @@ func (c *Config) setup() error {
 		c.Timeout = &Timeout{}
 		c.Timeout.ResetDefaultTimeout()
 	}
-	if c.PingInterval <= 0 {
+	if c.PingInterval == 0 {
 		c.PingInterval = DEFAULT_TIMEOUT / 2
 	}
 	return nil

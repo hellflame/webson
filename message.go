@@ -245,18 +245,27 @@ func (m *Message) merge(more *Message) error {
 }
 
 // split msg for write
-func (m *Message) split(sizeLimit int64) []*Message {
-	size := int64(len(m.Payload))
+func (m *Message) split(sizeLimit int) []*Message {
+	size := len(m.Payload)
+	if size == 0 {
+		return []*Message{{
+			send:       m.send,
+			config:     m.config,
+			isComplete: true,
+			Type:       m.Type,
+		}}
+	}
 	chunks := size / sizeLimit
 	if chunks*sizeLimit < size {
 		// math.Ceil
 		chunks += 1
 	}
 	var result = make([]*Message, chunks)
-	var vessel = make([]byte, sizeLimit)
-	for i := 0; int64(i) < chunks; i++ {
-		n, _ := m.entity.Read(vessel)
-		// inherit msg config
+	for i := 0; i < chunks; i++ {
+		l, r := i*sizeLimit, (i+1)*sizeLimit
+		if r > size {
+			r = size
+		}
 		msg := &Message{
 			send:   m.send,
 			config: m.config,
@@ -264,7 +273,7 @@ func (m *Message) split(sizeLimit int64) []*Message {
 			isComplete: i == int(chunks)-1,
 
 			Type:    m.Type,
-			Payload: vessel[0:n],
+			Payload: m.Payload[l:r],
 		}
 		result[i] = msg
 	}

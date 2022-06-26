@@ -16,6 +16,8 @@ type Adapter interface {
 	Ping() error
 	Pong() error
 	Dispatch(*Message) error
+	SetPongTime()
+	KeepPing()
 }
 
 type EventHandler interface {
@@ -27,12 +29,13 @@ type Connection struct {
 	rawConnection net.Conn
 
 	pendingStreams map[int]*Message
-	freeStreams    []int
+	inUseStreams   map[int]struct{}
 	lastStream     int
 	streamIdLock   sync.Mutex
 
 	isClient   bool
 	status     Status
+	latestPong time.Time
 	statusLock sync.Mutex
 	writeLock  sync.Mutex
 
@@ -46,22 +49,8 @@ type Connection struct {
 }
 
 func (con *Connection) prepare() {
-	config := con.config
 
 	con.rawConnection.SetDeadline(time.Time{})
-
-	// bind default pong for ping
-	con.OnMessage(PingMessage, func(m *Message, a Adapter) {
-		a.Pong()
-	})
-	con.OnStatus(StatusReady, func(s Status, a Adapter) {
-		for {
-			if e := a.Ping(); e != nil {
-				break
-			}
-			time.Sleep(time.Duration(config.PingInterval) * time.Second)
-		}
-	})
 
 	con.status = StatusYetReady
 	con.statusEventMap = make(map[Status]func(Status, Adapter))
@@ -69,6 +58,22 @@ func (con *Connection) prepare() {
 
 	// if not streamable, pendingStreams is for continue frames
 	con.pendingStreams = make(map[int]*Message)
+	con.inUseStreams = make(map[int]struct{})
+
+	// bind default pong for ping
+	con.OnMessage(PingMessage, func(m *Message, a Adapter) {
+		a.Pong()
+	})
+	con.OnMessage(PongMessage, func(m *Message, a Adapter) {
+		a.SetPongTime()
+	})
+
+	if con.config.PingInterval > 0 {
+		go con.KeepPing()
+		if con.config.Timeout.PongTimeout > 0 {
+			go con.watchPongTimeout()
+		}
+	}
 }
 
 func (con *Connection) negotiate() {
@@ -93,6 +98,30 @@ func (con *Connection) Pong() error {
 	return con.Dispatch(&Message{Type: PongMessage})
 }
 
+func (con *Connection) SetPongTime() {
+	con.latestPong = time.Now()
+}
+
+func (con *Connection) KeepPing() {
+	for {
+		if e := con.Ping(); e != nil {
+			break
+		}
+		time.Sleep(time.Duration(con.config.PingInterval) * time.Second)
+	}
+}
+
+func (con *Connection) watchPongTimeout() {
+	for {
+		time.Sleep(time.Second * time.Duration(con.config.Timeout.PongTimeout))
+		if time.Now().Unix()-con.latestPong.Unix() > int64(con.config.Timeout.PongTimeout) {
+			if e := con.updateStatus(StatusTimeout); e != nil {
+				return
+			}
+		}
+	}
+}
+
 func (con *Connection) Dispatch(m *Message) error {
 	if e := con.patchMsg(m); e != nil {
 		return e
@@ -102,7 +131,7 @@ func (con *Connection) Dispatch(m *Message) error {
 		defer con.writeLock.Unlock()
 	}
 
-	for _, msg := range m.split(int64(con.config.MaxPayloadSize)) {
+	for _, msg := range m.split(con.config.ChunkSize) {
 		if e := con.writeSingleFrame(msg); e != nil {
 			return e
 		}
@@ -116,6 +145,7 @@ func (con *Connection) DispatchReader(t MessageType, r io.Reader) (e error) {
 	}
 	con.patchMsg(msg)
 	if !con.streamable {
+		// only lock when it's not streaming, or dead lock may occur
 		con.writeLock.Lock()
 		defer con.writeLock.Unlock()
 	}
@@ -130,6 +160,9 @@ func (con *Connection) DispatchReader(t MessageType, r io.Reader) (e error) {
 		}
 		stream := msg.spawnVessel()
 		stream.Payload = vessel[0:n]
+		if n < chunkSize {
+			stream.isComplete = true
+		}
 		e = con.writeSingleFrame(stream)
 		if e != nil || n < chunkSize {
 			break
@@ -140,12 +173,31 @@ func (con *Connection) DispatchReader(t MessageType, r io.Reader) (e error) {
 
 // patchMsg keeps write Message intact & correct
 func (con *Connection) patchMsg(m *Message) error {
-	if con.streamable {
+	m.send = &msgSendOptions{
+		doCompress:    con.compressable,
+		compressLevel: con.compressLevel,
+		doMask:        con.isClient,
+	}
+
+	if con.streamable && !m.isControl() {
 		con.streamIdLock.Lock()
-		con.lastStream += 1
-		if con.lastStream > con.config.MaxStreams {
-			con.lastStream = 1
+		loop := false
+		for {
+			con.lastStream += 1
+			if con.lastStream > con.config.MaxStreams {
+				con.lastStream = 1
+				loop = true
+			}
+			if _, inUse := con.inUseStreams[con.lastStream]; inUse {
+				if loop {
+					return errors.New("stream ids spent")
+				}
+			} else {
+				con.inUseStreams[con.lastStream] = struct{}{}
+				break
+			}
 		}
+
 		m.send.streamId = con.lastStream
 		con.streamIdLock.Unlock()
 	}
@@ -164,8 +216,14 @@ func (con *Connection) writeSingleFrame(m *Message) error {
 		return e
 	}
 	if con.streamable {
+		// only lock when it's streaming, or dead lock may occur
 		con.writeLock.Lock()
 		defer con.writeLock.Unlock()
+		if m.isComplete {
+			con.streamIdLock.Lock()
+			delete(con.inUseStreams, m.send.streamId)
+			con.streamIdLock.Unlock()
+		}
 	}
 	_, e := io.Copy(con.rawConnection, &m.entity)
 	return e
@@ -176,6 +234,10 @@ func (con *Connection) Apply(h EventHandler) {
 	con.messageEventPool = append(con.messageEventPool, h.OnMessage)
 }
 
+func (con *Connection) OnReady(action func(Status, Adapter)) {
+	con.OnStatus(StatusReady, action)
+}
+
 func (con *Connection) OnStatus(s Status, action func(Status, Adapter)) {
 	con.statusEventMap[s] = action
 }
@@ -184,15 +246,18 @@ func (con *Connection) OnMessage(t MessageType, action func(*Message, Adapter)) 
 	con.messageEventMap[t] = action
 }
 
-func (con *Connection) updateStatus(s Status) {
+func (con *Connection) updateStatus(s Status) error {
 	con.statusLock.Lock()
 	defer con.statusLock.Unlock()
 
 	prevStatus := con.status
+	if prevStatus == StatusClosed {
+		return errors.New("close closed")
+	}
 	if prevStatus == s {
 		// prevent same event keep triggering
-		// mainly to prevent close & timeout repeatly triggers
-		return
+		// mainly to prevent timeout repeatly triggers
+		return nil
 	}
 	con.status = s
 	if action, ok := con.statusEventMap[s]; ok {
@@ -201,6 +266,7 @@ func (con *Connection) updateStatus(s Status) {
 	for _, action := range con.statusEventPool {
 		go action(prevStatus, con)
 	}
+	return nil
 }
 
 func (con *Connection) triggerMessage(m *Message) {
@@ -216,7 +282,7 @@ func (con *Connection) Start() error {
 	raw := bufio.NewReaderSize(con.rawConnection, con.config.BufferSize)
 	defer con.Close()
 
-	// con.updateStatus(StatusReady)
+	con.updateStatus(StatusReady)
 
 	triggerOnStart := con.config.TriggerOnStart
 	var vessel2 = make([]byte, 2)
@@ -226,6 +292,7 @@ func (con *Connection) Start() error {
 		if s, e := raw.Read(vessel2); e != nil || s != 2 {
 			return e
 		}
+		println("\nreading from con")
 		msg := &Message{
 			config: &msgConfig{
 				negotiate:      &con.negotiateConfig,
@@ -238,7 +305,6 @@ func (con *Connection) Start() error {
 			},
 		}
 		if e := msg.parseMeta(vessel2); e != nil {
-			// con.Dispatch(CloseMessage, )
 			return e
 		}
 		if msg.receive.size == 126 {

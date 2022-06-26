@@ -12,4 +12,5 @@ const DEFAULT_MAX_STREAMS = 1024
 
 const DEFAULT_COMPRESS_LEVEL = 1
 
+// related to msg frame structure & stream id convertion
 const streamBytes = 2
