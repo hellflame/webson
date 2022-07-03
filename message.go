@@ -308,7 +308,7 @@ func (m *Message) Read() ([]byte, error) {
 		}
 	}
 	if m.receive.compressed {
-		m.entity.Write([]byte{'\x00', '\x00', '\xff', '\xff', '\x01', '\x00', '\x00', '\xff', '\xff'})
+		m.entity.Write([]byte("\x00\x00\xff\xff\x01\x00\x00\xff\xff"))
 		return io.ReadAll(flate.NewReader(bytes.NewBuffer(m.entity.Bytes())))
 	}
 	return io.ReadAll(&m.entity)

@@ -160,7 +160,7 @@ func negotiate(client *ClientConfig, config *Config) (con net.Conn, nego *negoSe
 	}
 	nego = &negoSet{}
 	if config.EnableCompress &&
-		verify.Get("Sec-WebSocket-Extensions") == "permessage-deflate; server_no_context_takeover; client_no_context_takeover" {
+		verify.Get("Sec-Websocket-Extensions") == "permessage-deflate; server_no_context_takeover; client_no_context_takeover" {
 		nego.compressable = true
 		nego.compressLevel = config.CompressLevel
 		if nego.compressLevel == 0 {

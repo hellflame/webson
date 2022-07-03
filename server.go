@@ -72,7 +72,7 @@ func TakeOver(w http.ResponseWriter, r *http.Request, c *Config) (*Connection, e
 		if strings.Contains(strings.ToLower(strings.Join(header.Values("Sec-Websocket-Extensions"), " ")),
 			"permessage-deflate") {
 			compressable = true
-			verified["Sec-WebSocket-Extensions"] = "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+			verified["Sec-Websocket-Extensions"] = "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
 			if c.CompressLevel == 0 {
 				c.CompressLevel = DEFAULT_COMPRESS_LEVEL
 			}

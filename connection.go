@@ -265,6 +265,9 @@ func (con *Connection) updateStatus(s Status) error {
 		// mainly to prevent closed & timeout repeatly triggers
 		return nil
 	}
+	if s == StatusClosed {
+		con.rawConnection.Close()
+	}
 	con.status = s
 	if action, ok := con.statusEventMap[s]; ok {
 		go action(prevStatus, con)
@@ -286,7 +289,7 @@ func (con *Connection) triggerMessage(m *Message) {
 
 func (con *Connection) Start() error {
 	raw := bufio.NewReaderSize(con.rawConnection, con.config.BufferSize)
-	defer con.rawConnection.Close()
+	defer con.Close()
 
 	con.updateStatus(StatusReady)
 
