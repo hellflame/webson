@@ -14,7 +14,7 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		ws, e := webson.TakeOver(w, r, nil)
 		if e != nil {
-			panic(e)
+			return
 		}
 		ws.OnReady(func(a webson.Adapter) {
 			a.Dispatch(webson.TextMessage, []byte("hellflame"))
@@ -30,6 +30,6 @@ func main() {
 		// don't forget to Start
 		ws.Start()
 	})
-	fmt.Println("start listening....")
+	fmt.Println("waiting for connections....")
 	http.ListenAndServe("127.0.0.1:8000", nil)
 }

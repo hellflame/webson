@@ -12,7 +12,6 @@ import (
 func main() {
 	ws, e := webson.Dial("127.0.0.1:8000", nil)
 	if e != nil {
-		fmt.Println("Dial panic")
 		panic(e)
 	}
 	ws.OnReady(func(a webson.Adapter) {
@@ -23,11 +22,13 @@ func main() {
 		if string(msg) == "recv: hello" {
 			fmt.Println("close after server hello")
 			a.Close()
+		} else {
+			// you may receive this message
+			fmt.Println("from server:", string(msg))
 		}
 	})
 
 	if e := ws.Start(); e != nil {
-		fmt.Println("connection panic")
 		panic(e)
 	}
 }
