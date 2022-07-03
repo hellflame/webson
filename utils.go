@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
+	"io"
 )
 
 func magicDigest(challengeKey string, magic []byte) string {
@@ -30,4 +31,11 @@ func createMask() []byte {
 		panic("failed to create mask")
 	}
 	return mask
+}
+
+func exceptEOF(e error) error {
+	if e == io.EOF {
+		return nil
+	}
+	return e
 }

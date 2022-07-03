@@ -70,6 +70,9 @@ func (con *Connection) prepare() {
 	con.OnMessage(PongMessage, func(m *Message, a Adapter) {
 		a.SetPongTime()
 	})
+	con.OnMessage(CloseMessage, func(m *Message, a Adapter) {
+		a.Close()
+	})
 
 	if con.config.PingInterval > 0 {
 		go con.KeepPing()
@@ -81,11 +84,6 @@ func (con *Connection) prepare() {
 
 func (con *Connection) Close() error {
 	con.Dispatch(CloseMessage, nil)
-	return con.forceClose()
-}
-
-func (con *Connection) forceClose() error {
-	con.rawConnection.Close()
 	return con.updateStatus(StatusClosed)
 }
 
@@ -262,12 +260,9 @@ func (con *Connection) updateStatus(s Status) error {
 	defer con.statusLock.Unlock()
 
 	prevStatus := con.status
-	if prevStatus == StatusClosed {
-		return errors.New("close closed")
-	}
 	if prevStatus == s {
 		// prevent same event keep triggering
-		// mainly to prevent timeout repeatly triggers
+		// mainly to prevent closed & timeout repeatly triggers
 		return nil
 	}
 	con.status = s
@@ -291,7 +286,7 @@ func (con *Connection) triggerMessage(m *Message) {
 
 func (con *Connection) Start() error {
 	raw := bufio.NewReaderSize(con.rawConnection, con.config.BufferSize)
-	defer con.forceClose()
+	defer con.rawConnection.Close()
 
 	con.updateStatus(StatusReady)
 
@@ -301,7 +296,7 @@ func (con *Connection) Start() error {
 	var vessel8 = make([]byte, 8)
 	for {
 		if s, e := raw.Read(vessel2); e != nil || s != 2 {
-			return e
+			return exceptEOF(e)
 		}
 		msg := &Message{
 			config: &msgConfig{
@@ -342,7 +337,7 @@ func (con *Connection) Start() error {
 			}
 			payload, e := raw.Peek(int(msg.receive.size))
 			if e != nil {
-				return e
+				return exceptEOF(e)
 			}
 			raw.Discard(len(payload))
 			if msg.receive.masked {

@@ -21,7 +21,7 @@ func main() {
 	ws.OnMessage(webson.TextMessage, func(m *webson.Message, a webson.Adapter) {
 		msg, _ := m.Read()
 		if string(msg) == "recv: hello" {
-			fmt.Println("closed after server hello")
+			fmt.Println("close after server hello")
 			a.Close()
 		}
 	})
