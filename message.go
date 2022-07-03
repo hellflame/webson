@@ -68,9 +68,9 @@ type msgReceivedStatus struct {
 	UpdatedAt time.Time
 }
 
-// Message is a complete frame struct
-// Message can't be optimized only by user specify, it's replated to the current connection state
-// it can be created by:
+// Message is a complete frame struct.
+// Message can't be optimized only by user specify, it's replated to the current connection state.
+// It can be created by:
 // 1. ReadConnection 2. Message Split
 // 3. Dispatch Simple payload 4. Dispatch iter payload
 type Message struct {

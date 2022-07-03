@@ -19,7 +19,6 @@ func TakeOver(w http.ResponseWriter, r *http.Request, c *Config) (*Connection, e
 	}
 
 	header := r.Header
-
 	if !strings.EqualFold(header.Get("Connection"), "upgrade") {
 		sendHTTPError(w, http.StatusUpgradeRequired)
 		return nil, errors.New("connection is not upgrade")
@@ -73,7 +72,7 @@ func TakeOver(w http.ResponseWriter, r *http.Request, c *Config) (*Connection, e
 		if strings.Contains(strings.ToLower(strings.Join(header.Values("Sec-Websocket-Extensions"), " ")),
 			"permessage-deflate") {
 			compressable = true
-			verified["Sec-WebSocket-Extensions"] += "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+			verified["Sec-WebSocket-Extensions"] = "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
 			if c.CompressLevel == 0 {
 				c.CompressLevel = DEFAULT_COMPRESS_LEVEL
 			}
@@ -82,7 +81,7 @@ func TakeOver(w http.ResponseWriter, r *http.Request, c *Config) (*Connection, e
 
 	verified["Upgrade"] = "websocket"
 	verified["Connection"] = "Upgrade"
-	verified["Sec-WebSocket-Accept"] = magicDigest(negotiateKey, c.MagicKey)
+	verified["Sec-Websocket-Accept"] = magicDigest(negotiateKey, c.MagicKey)
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -108,7 +107,7 @@ func TakeOver(w http.ResponseWriter, r *http.Request, c *Config) (*Connection, e
 		rawConnection: wsCon,
 
 		config: c,
-		negotiateConfig: negotiateConfig{
+		negoSet: negoSet{
 			streamable:   streamable,
 			compressable: compressable,
 		},

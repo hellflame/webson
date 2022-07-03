@@ -12,10 +12,10 @@ import (
 
 type Adapter interface {
 	Close() error
-	Connect(string, *Config) error
 	Ping() error
 	Pong() error
-	Dispatch(*Message) error
+	Dispatch(MessageType, []byte) error
+	DispatchReader(MessageType, io.Reader) error
 	SetPongTime()
 	KeepPing()
 }
@@ -40,8 +40,11 @@ type Connection struct {
 	writeLock  sync.Mutex
 
 	config *Config
-	negotiateConfig
+	client *ClientConfig
+	node   *NodeConfig
+	negoSet
 
+	// event map as default action, can be replaced.
 	statusEventMap   map[Status]func(Status, Adapter)
 	messageEventMap  map[MessageType]func(*Message, Adapter)
 	statusEventPool  []func(Status, Adapter)
@@ -76,26 +79,28 @@ func (con *Connection) prepare() {
 	}
 }
 
-func (con *Connection) negotiate() {
-
-}
-
 func (con *Connection) Close() error {
-	con.updateStatus(StatusClosed)
-	con.Dispatch(&Message{Type: CloseMessage})
-	return con.rawConnection.Close()
+	con.Dispatch(CloseMessage, nil)
+	return con.forceClose()
 }
 
-func (con *Connection) Connect(addr string, c *Config) error {
-	return nil
+func (con *Connection) forceClose() error {
+	con.rawConnection.Close()
+	return con.updateStatus(StatusClosed)
+}
+
+func (con *Connection) ReStart() error {
+	// reset config
+	negotiate(con.client, con.config)
+	return con.Start()
 }
 
 func (con *Connection) Ping() error {
-	return con.Dispatch(&Message{Type: PingMessage})
+	return con.Dispatch(PingMessage, nil)
 }
 
 func (con *Connection) Pong() error {
-	return con.Dispatch(&Message{Type: PongMessage})
+	return con.Dispatch(PongMessage, nil)
 }
 
 func (con *Connection) SetPongTime() {
@@ -122,7 +127,8 @@ func (con *Connection) watchPongTimeout() {
 	}
 }
 
-func (con *Connection) Dispatch(m *Message) error {
+func (con *Connection) Dispatch(t MessageType, p []byte) error {
+	m := &Message{Type: t, Payload: p}
 	if e := con.patchMsg(m); e != nil {
 		return e
 	}
@@ -177,6 +183,11 @@ func (con *Connection) patchMsg(m *Message) error {
 		doCompress:    con.compressable,
 		compressLevel: con.compressLevel,
 		doMask:        con.isClient,
+	}
+	m.config = &msgConfig{
+		negotiate:      &con.negoSet,
+		extraMask:      con.config.PrivateMask,
+		triggerOnStart: con.config.TriggerOnStart,
 	}
 
 	if con.streamable && !m.isControl() {
@@ -234,8 +245,8 @@ func (con *Connection) Apply(h EventHandler) {
 	con.messageEventPool = append(con.messageEventPool, h.OnMessage)
 }
 
-func (con *Connection) OnReady(action func(Status, Adapter)) {
-	con.OnStatus(StatusReady, action)
+func (con *Connection) OnReady(action func(Adapter)) {
+	con.OnStatus(StatusReady, func(s Status, a Adapter) { action(a) })
 }
 
 func (con *Connection) OnStatus(s Status, action func(Status, Adapter)) {
@@ -280,7 +291,7 @@ func (con *Connection) triggerMessage(m *Message) {
 
 func (con *Connection) Start() error {
 	raw := bufio.NewReaderSize(con.rawConnection, con.config.BufferSize)
-	defer con.Close()
+	defer con.forceClose()
 
 	con.updateStatus(StatusReady)
 
@@ -292,10 +303,9 @@ func (con *Connection) Start() error {
 		if s, e := raw.Read(vessel2); e != nil || s != 2 {
 			return e
 		}
-		println("\nreading from con")
 		msg := &Message{
 			config: &msgConfig{
-				negotiate:      &con.negotiateConfig,
+				negotiate:      &con.negoSet,
 				extraMask:      con.config.PrivateMask,
 				triggerOnStart: triggerOnStart,
 			},

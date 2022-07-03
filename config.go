@@ -1,23 +1,52 @@
 package webson
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 )
 
+type PoolConfig struct {
+}
+
+type NodeConfig struct {
+	Name  string
+	Group string
+}
+
 // actual config for one webson connection after negotiation
-type negotiateConfig struct {
+type negoSet struct {
 	streamable bool
+	maxStreams int
 
 	compressable  bool
 	compressLevel int
 }
 
 type msgConfig struct {
-	negotiate *negotiateConfig
+	negotiate *negoSet
 
 	extraMask      []byte
 	triggerOnStart bool
+}
+
+type DialConfig struct {
+	Config
+	ClientConfig
+}
+
+// ClientConfig is for client connection config when negotiating with server
+type ClientConfig struct {
+	url    *simpleUrl
+	dialer func() (net.Conn, error)
+
+	ReconnectInterval int
+
+	UseTLS    bool
+	TLSConfig *tls.Config
+
+	ExtraHeaders map[string]string
 }
 
 // Config is the programer preferred options
