@@ -178,7 +178,7 @@ func (con *Connection) DispatchReader(t MessageType, r io.Reader) (e error) {
 // patchMsg keeps write Message intact & correct
 func (con *Connection) patchMsg(m *Message) error {
 	m.send = &msgSendOptions{
-		doCompress:    con.compressable,
+		doCompress:    con.compressable && !m.isControl(),
 		compressLevel: con.compressLevel,
 		doMask:        con.isClient,
 	}
@@ -342,9 +342,6 @@ func (con *Connection) Start() error {
 			raw.Discard(len(payload))
 			if msg.receive.masked {
 				msg.maskPayload(payload)
-			}
-			if msg.receive.compressed {
-
 			}
 			if msg.receive.isStream {
 				cancel := payload[0]&0b1000_0000 != 0

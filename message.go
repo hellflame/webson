@@ -2,6 +2,7 @@ package webson
 
 import (
 	"bytes"
+	"compress/flate"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -123,6 +124,24 @@ func (m *Message) maskPayload(payload []byte) {
 
 func (m *Message) assemble() error {
 	payload := m.Payload
+	if m.send.doCompress {
+		buf := bytes.NewBuffer(nil)
+		w, e := flate.NewWriter(buf, m.send.compressLevel)
+		if e != nil {
+			return e
+		}
+		if _, e := w.Write(payload); e != nil {
+			return e
+		}
+		if e := w.Flush(); e != nil {
+			return e
+		}
+		payload, e = io.ReadAll(buf)
+		if e != nil {
+			return e
+		}
+		payload = payload[:len(payload)-4]
+	}
 	msgSize := len(payload)
 	if m.send.streamlize {
 		msgSize += streamBytes // bytes for stream id
@@ -287,6 +306,10 @@ func (m *Message) Read() ([]byte, error) {
 		if !m.isComplete {
 			return nil, MsgYetComplete{}
 		}
+	}
+	if m.receive.compressed {
+		m.entity.Write([]byte{'\x00', '\x00', '\xff', '\xff', '\x01', '\x00', '\x00', '\xff', '\xff'})
+		return io.ReadAll(flate.NewReader(bytes.NewBuffer(m.entity.Bytes())))
 	}
 	return io.ReadAll(&m.entity)
 }

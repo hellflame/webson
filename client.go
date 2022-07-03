@@ -84,8 +84,8 @@ func negotiate(client *ClientConfig, config *Config) (con net.Conn, nego *negoSe
 		"Upgrade":    "websocket",
 		"Connection": "Upgrade",
 
-		"Sec-WebSocket-Version": "13",
-		"Sec-WebSocket-Key":     challengeKey,
+		"Sec-Websocket-Version": "13",
+		"Sec-Websocket-Key":     challengeKey,
 	}
 	if client.ExtraHeaders != nil {
 		for k, v := range headers {
@@ -93,7 +93,7 @@ func negotiate(client *ClientConfig, config *Config) (con net.Conn, nego *negoSe
 		}
 	}
 	if config.EnableCompress {
-		headers["Sec-WebSocket-Extensions"] = "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+		headers["Sec-Websocket-Extensions"] = "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
 	}
 	if config.EnableStreams {
 		headers["Webson-Max-Streams"] = strconv.Itoa(config.MaxStreams)
