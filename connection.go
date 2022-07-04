@@ -82,6 +82,10 @@ func (con *Connection) prepare() {
 	}
 }
 
+func (con *Connection) Name() string {
+	return con.node.Name
+}
+
 func (con *Connection) Close() error {
 	con.Dispatch(CloseMessage, nil)
 	return con.updateStatus(StatusClosed)

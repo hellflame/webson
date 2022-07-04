@@ -8,6 +8,9 @@ import (
 )
 
 type PoolConfig struct {
+	Size          int // max connections the pool can hold, 0 to be unlimited
+	ClientRetry   int // client retry count
+	RetryInterval int
 }
 
 type NodeConfig struct {
@@ -41,12 +44,15 @@ type ClientConfig struct {
 	url    *simpleUrl
 	dialer func() (net.Conn, error)
 
-	ReconnectInterval int
-
 	UseTLS    bool
 	TLSConfig *tls.Config
 
 	ExtraHeaders map[string]string
+}
+
+type Timeout struct {
+	HandshakeTimeout int
+	PongTimeout      int
 }
 
 // Config is the programer preferred options
@@ -92,8 +98,10 @@ func (c *Config) setup() error {
 		c.BufferSize = DEFAULT_CHUNK_SIZE
 	}
 	if c.Timeout == nil {
-		c.Timeout = &Timeout{}
-		c.Timeout.ResetDefaultTimeout()
+		c.Timeout = &Timeout{
+			HandshakeTimeout: DEFAULT_TIMEOUT,
+			PongTimeout:      DEFAULT_TIMEOUT,
+		}
 	}
 	if c.PingInterval == 0 {
 		c.PingInterval = DEFAULT_TIMEOUT / 2

@@ -16,6 +16,6 @@ const (
 
 	// StatusTimeout is the state when any action has spent more than expected time:
 	// handshake, wait for close, pong, etc.
-	// This state may be triggered for multiple times.
+	// This state may be triggered for multiple times from recovery to timeout.
 	StatusTimeout = Status(2)
 )
