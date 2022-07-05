@@ -38,7 +38,7 @@ func (p *Pool) Add(c *Connection, config *NodeConfig) error {
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
 
-	connectionName := c.Name()
+	connectionName := c.node.Name
 	if _, exist := p.entryMap[connectionName]; exist {
 		return errors.New("connection name conflict")
 	}
@@ -58,18 +58,22 @@ func (p *Pool) Add(c *Connection, config *NodeConfig) error {
 	return nil
 }
 
-func (p *Pool) remove(c *Connection, isClient bool) {
-	name := c.Name()
+func (p *Pool) remove(c *Connection) {
+	name := c.node.Name
+	isClient := c.isClient
+
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
+
 	delete(p.entryMap, name)
 	idx := -1
 	search := p.servers
+
 	if isClient {
 		search = p.clients
 	}
 	for i, c := range search {
-		if c.Name() == name {
+		if c.node.Name == name {
 			idx = i
 			break
 		}
@@ -94,53 +98,101 @@ func (p *Pool) startClient(c *Connection) {
 			break
 		}
 	}
-	p.remove(c, true)
+	p.remove(c)
 }
 
 func (p *Pool) startServer(c *Connection) {
 	c.Start()
-	p.remove(c, false)
+	p.remove(c)
 }
 
 func (p *Pool) CastOut(c *Connection) {
+	p.remove(c)
+}
 
+func (p *Pool) CastOutByName(name string) bool {
+	p.poolLock.Lock()
+	c, ok := p.entryMap[name]
+	p.poolLock.Unlock()
+
+	if ok {
+		p.remove(c)
+	}
+	return ok
 }
 
 func (p *Pool) Dispatch(t MessageType, payload []byte) {
+	p.poolLock.Lock()
+	defer p.poolLock.Unlock()
 
+	for _, c := range p.entryMap {
+		c.Dispatch(t, payload)
+	}
 }
 
-func (p *Pool) Clients() *Pool {
-	return nil
+func (p *Pool) ToClients(t MessageType, payload []byte) {
+	p.poolLock.Lock()
+	defer p.poolLock.Unlock()
+	for _, c := range p.clients {
+		c.Dispatch(t, payload)
+	}
 }
 
-func (p *Pool) Servers() *Pool {
-	return nil
+func (p *Pool) ToServers(t MessageType, payload []byte) {
+	p.poolLock.Lock()
+	defer p.poolLock.Unlock()
+	for _, c := range p.servers {
+		c.Dispatch(t, payload)
+	}
 }
 
-func (p *Pool) Group(name string) *Pool {
-	return nil
+func (p *Pool) ToGroup(gName string, t MessageType, payload []byte) {
+	p.poolLock.Lock()
+	defer p.poolLock.Unlock()
+
+	for _, c := range p.entryMap {
+		if c.node.Group == gName {
+			c.Dispatch(t, payload)
+		}
+	}
 }
 
-func (p *Pool) Pick(name string) Adapter {
-	return nil
+func (p *Pool) ToPick(name string, t MessageType, payload []byte) bool {
+	p.poolLock.Lock()
+	defer p.poolLock.Unlock()
+
+	if c, exist := p.entryMap[name]; exist {
+		c.Dispatch(t, payload)
+		return true
+	}
+	return false
 }
 
-func (p *Pool) Except(name string) *Pool {
-	return nil
+func (p *Pool) Except(name string, t MessageType, payload []byte) {
+	p.poolLock.Lock()
+	defer p.poolLock.Unlock()
+
+	for n, c := range p.entryMap {
+		if n == name {
+			continue
+		}
+		c.Dispatch(t, payload)
+	}
 }
 
 func (p *Pool) Close() {
 	p.closed = true
+	p.poolLock.Lock()
 	for _, c := range p.entryMap {
 		c.Close()
 	}
+	p.poolLock.Unlock()
 	p.Wait()
 }
 
 func (p *Pool) Wait() {
 	for {
-		time.Sleep(time.Duration(DEFAUTL_RETRY_INTERVAL) * time.Second)
+		time.Sleep(time.Duration(client_retry_interval) * time.Second)
 
 		p.poolLock.Lock()
 		isEmpty := len(p.entryMap) <= 0

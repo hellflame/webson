@@ -82,10 +82,6 @@ func (con *Connection) prepare() {
 	}
 }
 
-func (con *Connection) Name() string {
-	return con.node.Name
-}
-
 func (con *Connection) Close() error {
 	con.Dispatch(CloseMessage, nil)
 	return con.updateStatus(StatusClosed)
@@ -220,7 +216,7 @@ func (con *Connection) patchMsg(m *Message) error {
 func (con *Connection) writeSingleFrame(m *Message) error {
 	status := con.status
 	if status == StatusClosed {
-		return CantWrite{}
+		return WriteAfterClose{}
 	}
 	if status != StatusReady {
 		return CantWriteYet{status}

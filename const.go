@@ -16,4 +16,4 @@ const DEFAULT_COMPRESS_LEVEL = 1
 const streamBytes = 2
 
 const DEFAULT_POOL_WAIT = 5
-const DEFAUTL_RETRY_INTERVAL = 5
+const client_retry_interval = 2

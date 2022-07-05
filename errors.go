@@ -1,5 +1,7 @@
 package webson
 
+import "fmt"
+
 type MsgYetComplete struct{}
 
 func (e MsgYetComplete) Error() string {
@@ -15,11 +17,11 @@ type CantWriteYet struct {
 }
 
 func (e CantWriteYet) Error() string {
-	return ""
+	return fmt.Sprintf("can't write at status(%d)", e.Status)
 }
 
-type CantWrite struct{}
+type WriteAfterClose struct{}
 
-func (e CantWrite) Error() string {
+func (e WriteAfterClose) Error() string {
 	return ""
 }
