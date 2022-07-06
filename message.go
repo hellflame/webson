@@ -63,7 +63,8 @@ type msgReceivedStatus struct {
 
 	updateLock sync.Mutex
 
-	msgPool chan []byte
+	poolReading bool
+	msgPool     chan []byte
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -252,6 +253,17 @@ func (m *Message) parseMeta(raw []byte) error {
 func (m *Message) merge(more *Message) error {
 	if m.config.triggerOnStart {
 		// may block reading from connection
+		if m.receive.poolReading {
+			moreMsg, e := io.ReadAll(&more.entity)
+			if e != nil {
+				return e
+			}
+			m.receive.msgPool <- moreMsg
+			if more.isComplete {
+				close(m.receive.msgPool)
+			}
+			return nil
+		}
 		m.receive.updateLock.Lock()
 		defer m.receive.updateLock.Unlock()
 	}
@@ -316,5 +328,23 @@ func (m *Message) Read() ([]byte, error) {
 
 // ReadIter generate payload chunk by chunk
 func (m *Message) ReadIter(chanSize int) <-chan []byte {
-	return nil
+	if chanSize < 1 {
+		panic("0 size chan will block reading")
+	}
+	m.receive.poolReading = true
+	m.receive.msgPool = make(chan []byte, chanSize)
+
+	var received []byte
+	if m.receive.compressed {
+		m.entity.Write([]byte("\x00\x00\xff\xff\x01\x00\x00\xff\xff"))
+		received, _ = io.ReadAll(flate.NewReader(bytes.NewBuffer(m.entity.Bytes())))
+	} else {
+		received, _ = io.ReadAll(&m.entity)
+	}
+
+	m.receive.msgPool <- received
+	if m.isComplete {
+		close(m.receive.msgPool)
+	}
+	return m.receive.msgPool
 }

@@ -64,14 +64,14 @@ type Config struct {
 	ChunkSize      int
 	BufferSize     int
 	MaxPayloadSize int // single data frame size limit
+	TriggerOnStart bool
 
 	EnableCompress bool
 	CompressLevel  int
 
 	Timeout *Timeout
 
-	PingInterval   int
-	TriggerOnStart bool
+	PingInterval int
 
 	MagicKey    []byte
 	PrivateMask []byte

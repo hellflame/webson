@@ -21,7 +21,7 @@ func main() {
 		msg, _ := m.Read()
 		if string(msg) == "recv: hello" {
 			fmt.Println("close after server hello")
-			a.Close()
+			a.Close() // close current ws connection
 		} else {
 			// you may receive this message
 			fmt.Println("from server:", string(msg))

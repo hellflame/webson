@@ -142,7 +142,7 @@ func negotiate(client *ClientConfig, config *Config) (con net.Conn, nego *negoSe
 			}
 		} else {
 			if i := strings.Index(left, ":"); i > 0 {
-				key := strings.Title(left[:i])
+				key := strings.Title(strings.ToLower(left[:i]))
 				v := strings.Trim(left[i+1:], " ")
 				verify[key] = []string{v}
 			}
