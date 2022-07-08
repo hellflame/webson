@@ -21,6 +21,7 @@ type Adapter interface {
 }
 
 type EventHandler interface {
+	Name() string // yes, name is necessary, it's ok to return ""
 	OnStatus(Status, Adapter)
 	OnMessage(*Message, Adapter)
 }
@@ -45,10 +46,9 @@ type Connection struct {
 	negoSet
 
 	// event map as default action, can be replaced.
-	statusEventMap   map[Status]func(Status, Adapter)
-	messageEventMap  map[MessageType]func(*Message, Adapter)
-	statusEventPool  []func(Status, Adapter)
-	messageEventPool []func(*Message, Adapter)
+	statusEventMap  map[Status]func(Status, Adapter)
+	messageEventMap map[MessageType]func(*Message, Adapter)
+	eventPool       []EventHandler
 }
 
 func (con *Connection) prepare() {
@@ -178,7 +178,7 @@ func (con *Connection) DispatchReader(t MessageType, r io.Reader) (e error) {
 // patchMsg keeps write Message intact & correct
 func (con *Connection) patchMsg(m *Message) error {
 	m.send = &msgSendOptions{
-		doCompress:    con.compressable && !m.isControl(),
+		doCompress:    con.compressable && !m.IsControl(),
 		compressLevel: con.compressLevel,
 		doMask:        con.isClient,
 	}
@@ -188,7 +188,7 @@ func (con *Connection) patchMsg(m *Message) error {
 		triggerOnStart: con.config.TriggerOnStart,
 	}
 
-	if con.streamable && !m.isControl() {
+	if con.streamable && !m.IsControl() {
 		con.streamIdLock.Lock()
 		loop := false
 		for {
@@ -239,8 +239,20 @@ func (con *Connection) writeSingleFrame(m *Message) error {
 }
 
 func (con *Connection) Apply(h EventHandler) {
-	con.statusEventPool = append(con.statusEventPool, h.OnStatus)
-	con.messageEventPool = append(con.messageEventPool, h.OnMessage)
+	con.eventPool = append(con.eventPool, h)
+}
+
+func (con *Connection) Revoke(h EventHandler) {
+	idx := -1
+	for i, e := range con.eventPool {
+		if e.Name() == h.Name() {
+			idx = i
+			break
+		}
+	}
+	if idx >= 0 {
+		con.eventPool = append(con.eventPool[:idx], con.eventPool[idx+1:]...)
+	}
 }
 
 func (con *Connection) OnReady(action func(Adapter)) {
@@ -255,6 +267,16 @@ func (con *Connection) OnMessage(t MessageType, action func(*Message, Adapter)) 
 	con.messageEventMap[t] = action
 }
 
+func (con *Connection) forceClose() {
+	con.rawConnection.Close()
+	// clear pending received streams
+	for _, m := range con.pendingStreams {
+		if !m.isComplete && m.receive.poolReading {
+			close(m.receive.msgPool)
+		}
+	}
+}
+
 func (con *Connection) updateStatus(s Status) error {
 	con.statusLock.Lock()
 	defer con.statusLock.Unlock()
@@ -266,14 +288,15 @@ func (con *Connection) updateStatus(s Status) error {
 		return nil
 	}
 	if s == StatusClosed {
-		con.rawConnection.Close()
+		con.forceClose()
 	}
 	con.status = s
 	if action, ok := con.statusEventMap[s]; ok {
 		go action(prevStatus, con)
 	}
-	for _, action := range con.statusEventPool {
-		go action(prevStatus, con)
+
+	for _, handler := range con.eventPool {
+		go handler.OnStatus(prevStatus, con)
 	}
 	return nil
 }
@@ -282,8 +305,8 @@ func (con *Connection) triggerMessage(m *Message) {
 	if action, ok := con.messageEventMap[m.Type]; ok {
 		go action(m, con)
 	}
-	for _, action := range con.messageEventPool {
-		go action(m, con)
+	for _, handler := range con.eventPool {
+		go handler.OnMessage(m, con)
 	}
 }
 
@@ -363,7 +386,7 @@ func (con *Connection) Start() error {
 			}
 		}
 
-		if msg.isControl() {
+		if msg.IsControl() {
 			con.triggerMessage(msg)
 			if msg.Type == CloseMessage {
 				// close message will be sent in defer function

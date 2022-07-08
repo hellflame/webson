@@ -6,12 +6,38 @@ import (
 	"time"
 )
 
+type poolEventProxy struct {
+	name           string
+	statusHandler  func(Status, Adapter)
+	messageHandler func(*Message, Adapter)
+}
+
+func (p *poolEventProxy) Name() string {
+	return p.name
+}
+
+func (p *poolEventProxy) OnStatus(s Status, a Adapter) {
+	if p.statusHandler == nil {
+		return
+	}
+	p.statusHandler(s, a)
+}
+
+func (p *poolEventProxy) OnMessage(m *Message, a Adapter) {
+	if p.messageHandler == nil {
+		return
+	}
+	p.messageHandler(m, a)
+}
+
 type Pool struct {
 	clients []*Connection
 	servers []*Connection
 	config  *PoolConfig
 
 	entryMap map[string]*Connection
+
+	poolEventProxy
 
 	poolLock sync.Mutex
 	closed   bool
@@ -21,9 +47,22 @@ func NewPool(c *PoolConfig) *Pool {
 	if c == nil {
 		c = &PoolConfig{}
 	}
+	if c.Name == "" {
+		c.Name = createChallengeKey()
+	}
 	return &Pool{
 		config: c,
+
+		poolEventProxy: poolEventProxy{name: c.Name},
 	}
+}
+
+func (p *Pool) OnStatus(action func(Status, Adapter)) {
+	p.statusHandler = action
+}
+
+func (p *Pool) OnMessage(action func(*Message, Adapter)) {
+	p.messageHandler = action
 }
 
 func (p *Pool) Add(c *Connection, config *NodeConfig) error {
@@ -45,6 +84,8 @@ func (p *Pool) Add(c *Connection, config *NodeConfig) error {
 	if p.config.Size != 0 && len(p.entryMap) >= p.config.Size {
 		return errors.New("pool size exceeded")
 	}
+
+	c.Apply(&p.poolEventProxy)
 	p.entryMap[connectionName] = c
 
 	if c.isClient {
@@ -66,6 +107,8 @@ func (p *Pool) remove(c *Connection) {
 	defer p.poolLock.Unlock()
 
 	delete(p.entryMap, name)
+	c.Revoke(&p.poolEventProxy)
+
 	idx := -1
 	search := p.servers
 

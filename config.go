@@ -8,6 +8,7 @@ import (
 )
 
 type PoolConfig struct {
+	Name string // use for connection apply
 	Size          int // max connections the pool can hold, 0 to be unlimited
 	ClientRetry   int // client retry count
 	RetryInterval int

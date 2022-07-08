@@ -99,7 +99,11 @@ func (m *Message) spawnVessel() *Message {
 	}
 }
 
-func (m *Message) isControl() bool {
+func (m *Message) IsComplete() bool {
+	return m.isComplete
+}
+
+func (m *Message) IsControl() bool {
 	return int(m.Type) >= 8
 }
 
@@ -159,7 +163,7 @@ func (m *Message) assemble() error {
 	var frame = make([]byte, frameSize)
 
 	frame[0] = byte(m.Type)
-	if m.isComplete || m.isControl() {
+	if m.isComplete || m.IsControl() {
 		frame[0] |= 0b1000_0000
 	}
 	if m.send.doCompress {
@@ -180,12 +184,12 @@ func (m *Message) assemble() error {
 	switch {
 	case msgSize >= 65536:
 		frame[1] |= 127
-		pos += 8
 		binary.BigEndian.PutUint64(frame[pos:], uint64(msgSize))
+		pos += 8
 	case msgSize > 125:
 		frame[1] |= 126
-		pos += 2
 		binary.BigEndian.PutUint16(frame[pos:], uint16(msgSize))
+		pos += 2
 	default:
 		frame[1] |= byte(msgSize)
 	}
@@ -277,8 +281,8 @@ func (m *Message) merge(more *Message) error {
 
 // split msg for write
 func (m *Message) split(sizeLimit int) []*Message {
-	size := len(m.Payload)
-	if size == 0 {
+	originSize := len(m.Payload)
+	if originSize == 0 {
 		return []*Message{{
 			send:       m.send,
 			config:     m.config,
@@ -286,16 +290,16 @@ func (m *Message) split(sizeLimit int) []*Message {
 			Type:       m.Type,
 		}}
 	}
-	chunks := size / sizeLimit
-	if chunks*sizeLimit < size {
+	chunks := originSize / sizeLimit
+	if chunks*sizeLimit < originSize {
 		// math.Ceil
 		chunks += 1
 	}
 	var result = make([]*Message, chunks)
 	for i := 0; i < chunks; i++ {
 		l, r := i*sizeLimit, (i+1)*sizeLimit
-		if r > size {
-			r = size
+		if r > originSize {
+			r = originSize
 		}
 		msg := &Message{
 			send:   m.send,
