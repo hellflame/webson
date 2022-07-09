@@ -36,6 +36,8 @@ type Connection struct {
 
 	isClient   bool
 	status     Status
+	startClose bool
+	closed     bool
 	latestPong time.Time
 	statusLock sync.Mutex
 	writeLock  sync.Mutex
@@ -82,9 +84,34 @@ func (con *Connection) prepare() {
 	}
 }
 
+func (con *Connection) cleanClose() {
+	con.closed = true
+	con.rawConnection.Close()
+	// clear pending received streams
+	for _, m := range con.pendingStreams {
+		if !m.isComplete && m.receive.poolReading {
+			close(m.receive.msgPool)
+		}
+	}
+}
+
 func (con *Connection) Close() error {
 	con.Dispatch(CloseMessage, nil)
+	con.statusLock.Lock()
+	if !con.startClose {
+		con.startClose = true
+		go con.makeSureClose()
+	}
+	con.statusLock.Unlock()
 	return con.updateStatus(StatusClosed)
+}
+
+func (con *Connection) makeSureClose() {
+	time.Sleep(time.Duration(con.config.Timeout.CloseTimeout) * time.Second)
+	if con.closed {
+		return
+	}
+	con.cleanClose()
 }
 
 func (con *Connection) ReStart() error {
@@ -118,6 +145,9 @@ func (con *Connection) watchPongTimeout() {
 	for {
 		time.Sleep(time.Second * time.Duration(con.config.Timeout.PongTimeout))
 		if time.Now().Unix()-con.latestPong.Unix() > int64(con.config.Timeout.PongTimeout) {
+			if con.status == StatusClosed {
+				break
+			}
 			if e := con.updateStatus(StatusTimeout); e != nil {
 				return
 			}
@@ -267,16 +297,6 @@ func (con *Connection) OnMessage(t MessageType, action func(*Message, Adapter)) 
 	con.messageEventMap[t] = action
 }
 
-func (con *Connection) forceClose() {
-	con.rawConnection.Close()
-	// clear pending received streams
-	for _, m := range con.pendingStreams {
-		if !m.isComplete && m.receive.poolReading {
-			close(m.receive.msgPool)
-		}
-	}
-}
-
 func (con *Connection) updateStatus(s Status) error {
 	con.statusLock.Lock()
 	defer con.statusLock.Unlock()
@@ -286,9 +306,6 @@ func (con *Connection) updateStatus(s Status) error {
 		// prevent same event keep triggering
 		// mainly to prevent closed & timeout repeatly triggers
 		return nil
-	}
-	if s == StatusClosed {
-		con.forceClose()
 	}
 	con.status = s
 	if action, ok := con.statusEventMap[s]; ok {
@@ -312,7 +329,10 @@ func (con *Connection) triggerMessage(m *Message) {
 
 func (con *Connection) Start() error {
 	raw := bufio.NewReaderSize(con.rawConnection, con.config.BufferSize)
-	defer con.Close()
+	defer func() {
+		con.updateStatus(StatusClosed)
+		con.cleanClose()
+	}()
 
 	con.updateStatus(StatusReady)
 
@@ -389,7 +409,7 @@ func (con *Connection) Start() error {
 		if msg.IsControl() {
 			con.triggerMessage(msg)
 			if msg.Type == CloseMessage {
-				// close message will be sent in defer function
+				// close ack message will be sent in defer function
 				return nil
 			}
 		} else {

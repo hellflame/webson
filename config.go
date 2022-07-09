@@ -8,9 +8,9 @@ import (
 )
 
 type PoolConfig struct {
-	Name string // use for connection apply
-	Size          int // max connections the pool can hold, 0 to be unlimited
-	ClientRetry   int // client retry count
+	Name          string // use for connection apply
+	Size          int    // max connections the pool can hold, 0 to be unlimited
+	ClientRetry   int    // client retry count
 	RetryInterval int
 }
 
@@ -54,6 +54,7 @@ type ClientConfig struct {
 type Timeout struct {
 	HandshakeTimeout int
 	PongTimeout      int
+	CloseTimeout     int
 }
 
 // Config is the programer preferred options
@@ -102,6 +103,7 @@ func (c *Config) setup() error {
 		c.Timeout = &Timeout{
 			HandshakeTimeout: DEFAULT_TIMEOUT,
 			PongTimeout:      DEFAULT_TIMEOUT,
+			CloseTimeout:     DEFAULT_TIMEOUT,
 		}
 	}
 	if c.PingInterval == 0 {
