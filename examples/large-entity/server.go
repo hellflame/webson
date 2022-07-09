@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/hellflame/webson"
@@ -22,12 +23,19 @@ func main() {
 		if e != nil {
 			return
 		}
+
 		msgIdx := 0
+		var idxLock sync.Mutex
+		getMgsId := func() int {
+			idxLock.Lock()
+			defer idxLock.Unlock()
+			msgIdx += 1
+			return msgIdx
+		}
 		// monitor TextMessage process and read it at last
 		ws.OnMessage(webson.TextMessage, func(m *webson.Message, a webson.Adapter) {
 			// be careful, TriggerOnStart only means trigger on start, you need to:
 			// loop read unfinished msg, until it's complete
-			msgIdx += 1 // don't worry about synchronization problem
 			for {
 				msg, e := m.Read()
 				if e != nil {
@@ -40,16 +48,16 @@ func main() {
 						panic(e)
 					}
 				}
-				fmt.Println("here comes the complete msg")
 
-				save, e := os.Create(fmt.Sprintf("%d.txt", msgIdx))
+				saveName := fmt.Sprintf("%d.txt", getMgsId())
+				save, e := os.Create(saveName)
 				if e != nil {
 					panic(e)
 				}
 				save.Write(msg)
 				save.Close()
 
-				fmt.Println("TextMessage is saved")
+				fmt.Println("TextMessage is saved", saveName)
 				break // break out the loop after msg is complete
 			}
 		})

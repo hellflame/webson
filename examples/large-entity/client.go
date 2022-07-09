@@ -23,9 +23,6 @@ func main() {
 	ws.OnMessage(webson.TextMessage, func(m *webson.Message, a webson.Adapter) {
 		msg, _ := m.Read()
 		fmt.Println("server bin ack:", string(msg))
-		if string(msg) == "random finished" {
-			ws.Close()
-		}
 	})
 
 	ws.OnReady(func(a webson.Adapter) {
