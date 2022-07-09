@@ -319,6 +319,9 @@ func (m *Message) Read() ([]byte, error) {
 	if m.config.triggerOnStart {
 		m.receive.updateLock.Lock()
 		defer m.receive.updateLock.Unlock()
+		if m.config.synchronized {
+			return nil, errors.New("synchronize read with triggerOnStart")
+		}
 		if !m.isComplete {
 			return nil, MsgYetComplete{}
 		}
@@ -334,6 +337,9 @@ func (m *Message) Read() ([]byte, error) {
 func (m *Message) ReadIter(chanSize int) <-chan []byte {
 	if chanSize < 1 {
 		panic("0 size chan will block reading")
+	}
+	if m.config.synchronized {
+		panic("synchronize ReadIter")
 	}
 	m.receive.poolReading = true
 	m.receive.msgPool = make(chan []byte, chanSize)

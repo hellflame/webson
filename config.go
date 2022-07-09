@@ -33,6 +33,7 @@ type msgConfig struct {
 
 	extraMask      []byte
 	triggerOnStart bool
+	synchronized   bool
 }
 
 type DialConfig struct {
@@ -67,6 +68,7 @@ type Config struct {
 	BufferSize     int
 	MaxPayloadSize int // single data frame size limit
 	TriggerOnStart bool
+	Synchronize    bool
 
 	EnableCompress bool
 	CompressLevel  int

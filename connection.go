@@ -320,10 +320,18 @@ func (con *Connection) updateStatus(s Status) error {
 
 func (con *Connection) triggerMessage(m *Message) {
 	if action, ok := con.messageEventMap[m.Type]; ok {
-		go action(m, con)
+		if con.config.Synchronize {
+			action(m, con)
+		} else {
+			go action(m, con)
+		}
 	}
 	for _, handler := range con.eventPool {
-		go handler.OnMessage(m, con)
+		if con.config.Synchronize {
+			handler.OnMessage(m, con)
+		} else {
+			go handler.OnMessage(m, con)
+		}
 	}
 }
 
@@ -349,6 +357,7 @@ func (con *Connection) Start() error {
 				negotiate:      &con.negoSet,
 				extraMask:      con.config.PrivateMask,
 				triggerOnStart: triggerOnStart,
+				synchronized:   con.config.Synchronize,
 			},
 			receive: &msgReceivedStatus{
 				CreatedAt:    time.Now(),
