@@ -18,6 +18,8 @@ type Adapter interface {
 	DispatchReader(MessageType, io.Reader) error
 	SetPongTime()
 	KeepPing()
+	Name() string
+	Group() string
 }
 
 type EventHandler interface {
@@ -82,6 +84,20 @@ func (con *Connection) prepare() {
 			go con.watchPongTimeout()
 		}
 	}
+}
+
+func (con *Connection) Group() string {
+	if con.node == nil {
+		return ""
+	}
+	return con.node.Group
+}
+
+func (con *Connection) Name() string {
+	if con.node == nil {
+		return ""
+	}
+	return con.node.Name
 }
 
 func (con *Connection) cleanClose() {

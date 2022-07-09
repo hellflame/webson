@@ -30,5 +30,7 @@ func main() {
 		ws.Start()
 	})
 	fmt.Println("waiting for connections....")
-	http.ListenAndServe("127.0.0.1:8000", nil)
+	if e := http.ListenAndServe("127.0.0.1:8000", nil); e != nil {
+		panic(e)
+	}
 }

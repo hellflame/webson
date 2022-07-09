@@ -88,7 +88,7 @@ func negotiate(client *ClientConfig, config *Config) (con net.Conn, nego *negoSe
 		"Sec-Websocket-Key":     challengeKey,
 	}
 	if client.ExtraHeaders != nil {
-		for k, v := range headers {
+		for k, v := range client.ExtraHeaders {
 			headers[k] = v
 		}
 	}

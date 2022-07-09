@@ -51,7 +51,8 @@ func NewPool(c *PoolConfig) *Pool {
 		c.Name = createChallengeKey()
 	}
 	return &Pool{
-		config: c,
+		config:   c,
+		entryMap: make(map[string]*Connection),
 
 		poolEventProxy: poolEventProxy{name: c.Name},
 	}
@@ -238,10 +239,10 @@ func (p *Pool) Wait() {
 		time.Sleep(time.Duration(client_retry_interval) * time.Second)
 
 		p.poolLock.Lock()
-		isEmpty := len(p.entryMap) <= 0
+		stop := len(p.entryMap) <= 0 && p.closed
 		p.poolLock.Unlock()
 
-		if isEmpty {
+		if stop {
 			break
 		}
 	}
