@@ -104,12 +104,12 @@ func (c *Config) setup() error {
 	if c.Timeout == nil {
 		c.Timeout = &Timeout{
 			HandshakeTimeout: DEFAULT_TIMEOUT,
-			PongTimeout:      DEFAULT_TIMEOUT,
+			PongTimeout:      DEFAULT_TIMEOUT / 2,
 			CloseTimeout:     DEFAULT_TIMEOUT,
 		}
 	}
 	if c.PingInterval == 0 {
-		c.PingInterval = DEFAULT_TIMEOUT / 2
+		c.PingInterval = DEFAULT_TIMEOUT
 	}
 	return nil
 }
