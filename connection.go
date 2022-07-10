@@ -78,9 +78,6 @@ func (con *Connection) prepare() {
 
 	if con.config.PingInterval > 0 {
 		go con.KeepPing()
-		if con.config.Timeout.PongTimeout > 0 {
-			go con.watchPongTimeout()
-		}
 	}
 }
 
@@ -148,6 +145,8 @@ func (con *Connection) RefreshPongTime() {
 }
 
 func (con *Connection) KeepPing() {
+	timeout := false
+	pongTimeout := int64(con.config.Timeout.PongTimeout)
 	for {
 		switch con.Ping().(type) {
 		case WriteAfterClose:
@@ -155,23 +154,19 @@ func (con *Connection) KeepPing() {
 		default:
 		}
 		time.Sleep(time.Duration(con.config.PingInterval) * time.Second)
-	}
-}
 
-func (con *Connection) watchPongTimeout() {
-	timeout := false
-	for {
-		time.Sleep(time.Second * time.Duration(con.config.PingInterval))
-		if con.lastPong.Unix()-con.lastPing.Unix() > int64(con.config.Timeout.PongTimeout) {
-			if con.status == StatusClosed {
-				break
-			}
-			timeout = true
-			con.updateStatus(StatusTimeout)
-		} else {
-			if timeout {
-				// remember to recover from timeout
-				con.updateStatus(StatusReady)
+		if pongTimeout > 0 {
+			// check whether last ping has pong response
+			if con.lastPong.Unix()-con.lastPing.Unix() > pongTimeout {
+				if con.status == StatusClosed {
+					break
+				}
+				timeout = true
+			} else {
+				if timeout {
+					// remember to recover from timeout
+					con.updateStatus(StatusReady)
+				}
 			}
 		}
 	}
