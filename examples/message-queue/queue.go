@@ -20,6 +20,7 @@ func main() {
 		ClientConfig: webson.ClientConfig{ExtraHeaders: map[string]string{
 			"topic": topic,
 		}},
+		Config: webson.Config{Timeout: &webson.Timeout{PongTimeout: -1}},
 	})
 	if e != nil {
 		panic(e)

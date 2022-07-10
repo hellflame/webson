@@ -11,12 +11,12 @@ import (
 )
 
 type Adapter interface {
-	Close() error
+	Close()
 	Ping() error
 	Pong() error
 	Dispatch(MessageType, []byte) error
 	DispatchReader(MessageType, io.Reader) error
-	SetPongTime()
+	RefreshPongTime()
 	KeepPing()
 	Name() string
 	Group() string
@@ -40,7 +40,8 @@ type Connection struct {
 	status     Status
 	startClose bool
 	closed     bool
-	latestPong time.Time
+	lastPing   time.Time
+	lastPong   time.Time
 	statusLock sync.Mutex
 	writeLock  sync.Mutex
 
@@ -72,10 +73,7 @@ func (con *Connection) prepare() {
 		a.Pong()
 	})
 	con.OnMessage(PongMessage, func(m *Message, a Adapter) {
-		a.SetPongTime()
-	})
-	con.OnMessage(CloseMessage, func(m *Message, a Adapter) {
-		a.Close()
+		a.RefreshPongTime()
 	})
 
 	if con.config.PingInterval > 0 {
@@ -111,7 +109,7 @@ func (con *Connection) cleanClose() {
 	}
 }
 
-func (con *Connection) Close() error {
+func (con *Connection) Close() {
 	con.Dispatch(CloseMessage, nil)
 	con.statusLock.Lock()
 	if !con.startClose {
@@ -119,7 +117,7 @@ func (con *Connection) Close() error {
 		go con.makeSureClose()
 	}
 	con.statusLock.Unlock()
-	return con.updateStatus(StatusClosed)
+	con.updateStatus(StatusClosed)
 }
 
 func (con *Connection) makeSureClose() {
@@ -137,6 +135,7 @@ func (con *Connection) ReStart() error {
 }
 
 func (con *Connection) Ping() error {
+	con.lastPing = time.Now()
 	return con.Dispatch(PingMessage, nil)
 }
 
@@ -144,28 +143,35 @@ func (con *Connection) Pong() error {
 	return con.Dispatch(PongMessage, nil)
 }
 
-func (con *Connection) SetPongTime() {
-	con.latestPong = time.Now()
+func (con *Connection) RefreshPongTime() {
+	con.lastPong = time.Now()
 }
 
 func (con *Connection) KeepPing() {
 	for {
-		if e := con.Ping(); e != nil {
+		switch con.Ping().(type) {
+		case WriteAfterClose:
 			break
+		default:
 		}
 		time.Sleep(time.Duration(con.config.PingInterval) * time.Second)
 	}
 }
 
 func (con *Connection) watchPongTimeout() {
+	timeout := false
 	for {
-		time.Sleep(time.Second * time.Duration(con.config.Timeout.PongTimeout))
-		if time.Now().Unix()-con.latestPong.Unix() > int64(con.config.Timeout.PongTimeout) {
+		time.Sleep(time.Second * time.Duration(con.config.PingInterval))
+		if con.lastPong.Unix()-con.lastPing.Unix() > int64(con.config.Timeout.PongTimeout) {
 			if con.status == StatusClosed {
 				break
 			}
-			if e := con.updateStatus(StatusTimeout); e != nil {
-				return
+			timeout = true
+			con.updateStatus(StatusTimeout)
+		} else {
+			if timeout {
+				// remember to recover from timeout
+				con.updateStatus(StatusReady)
 			}
 		}
 	}
@@ -313,7 +319,7 @@ func (con *Connection) OnMessage(t MessageType, action func(*Message, Adapter)) 
 	con.messageEventMap[t] = action
 }
 
-func (con *Connection) updateStatus(s Status) error {
+func (con *Connection) updateStatus(s Status) {
 	con.statusLock.Lock()
 	defer con.statusLock.Unlock()
 
@@ -321,7 +327,7 @@ func (con *Connection) updateStatus(s Status) error {
 	if prevStatus == s {
 		// prevent same event keep triggering
 		// mainly to prevent closed & timeout repeatly triggers
-		return nil
+		return
 	}
 	con.status = s
 	if action, ok := con.statusEventMap[s]; ok {
@@ -331,7 +337,7 @@ func (con *Connection) updateStatus(s Status) error {
 	for _, handler := range con.eventPool {
 		go handler.OnStatus(prevStatus, con)
 	}
-	return nil
+	return
 }
 
 func (con *Connection) triggerMessage(m *Message) {

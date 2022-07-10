@@ -27,6 +27,7 @@ func main() {
 		fmt.Scanln(&topic)
 		if topic == "" {
 			fmt.Println("default topic is choosed")
+			topic = "default"
 		}
 		fmt.Println("send anything to the topic?")
 		var input string

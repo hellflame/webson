@@ -29,11 +29,16 @@ func main() {
 		if e != nil {
 			return
 		}
+		ws.OnReady(func(a webson.Adapter) {
+			a.Dispatch(webson.TextMessage, []byte("ready"))
+		})
 		ws.OnStatus(webson.StatusClosed, func(s webson.Status, a webson.Adapter) {
 			fmt.Println("one client left", topicName)
 		})
 
-		pool.Add(ws, &webson.NodeConfig{Group: topicName})
+		if e := pool.Add(ws, &webson.NodeConfig{Group: topicName}); e != nil {
+			println(e.Error())
+		}
 	})
 
 	http.HandleFunc("/client", func(w http.ResponseWriter, r *http.Request) {
@@ -41,9 +46,6 @@ func main() {
 		if e != nil {
 			return
 		}
-		ws.OnReady(func(a webson.Adapter) {
-			a.Dispatch(webson.TextMessage, []byte("ready to send msgs"))
-		})
 		ws.OnMessage(webson.TextMessage, func(m *webson.Message, a webson.Adapter) {
 			rawClientMsg, _ := m.Read()
 			var clientMsg msg
@@ -54,8 +56,7 @@ func main() {
 			pool.ToGroup(clientMsg.Topic, webson.TextMessage, []byte(clientMsg.Content))
 		})
 
-		// don't forget to Start
-		// this non-grouped connection
+		// don't forget to Start this non-grouped connection
 		ws.Start()
 	})
 
