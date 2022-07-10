@@ -24,7 +24,7 @@ func main() {
 		if topicName == "" {
 			topicName = "default"
 		}
-		println("topic listener added for", topicName)
+		fmt.Println("topic listener added for", topicName)
 		ws, e := webson.TakeOver(w, r, nil)
 		if e != nil {
 			return
@@ -37,7 +37,7 @@ func main() {
 		})
 
 		if e := pool.Add(ws, &webson.NodeConfig{Group: topicName}); e != nil {
-			println(e.Error())
+			fmt.Println(e.Error())
 		}
 	})
 
