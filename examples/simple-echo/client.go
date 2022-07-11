@@ -14,27 +14,21 @@ func main() {
 	if e != nil {
 		panic(e)
 	}
-	ws.OnReady(collectUserInput)
-	ws.OnMessage(webson.TextMessage, printTextResponse)
+	fmt.Println("input something and press ENTER")
+	ws.OnMessage(webson.TextMessage, collectAndEcho)
 
 	if e := ws.Start(); e != nil {
 		panic(e)
 	}
 }
 
-func collectUserInput(a webson.Adapter) {
-	var input string
-	fmt.Println("input something and press ENTER")
-	for {
-		fmt.Scanln(&input)
-		if input == "" {
-			continue
-		}
-		a.Dispatch(webson.TextMessage, []byte(input))
-	}
-}
-
-func printTextResponse(m *webson.Message, a webson.Adapter) {
+func collectAndEcho(m *webson.Message, a webson.Adapter) {
 	msg, _ := m.Read()
 	fmt.Println("from server:", string(msg))
+	var input string
+	fmt.Scanln(&input)
+	if input == "" {
+		return
+	}
+	a.Dispatch(webson.TextMessage, []byte(input))
 }
