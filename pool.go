@@ -108,7 +108,7 @@ func (p *Pool) remove(c *Connection) {
 	defer p.poolLock.Unlock()
 
 	delete(p.entryMap, name)
-	c.Revoke(&p.poolEventProxy)
+	c.Revoke(p.name)
 
 	idx := -1
 	search := p.servers

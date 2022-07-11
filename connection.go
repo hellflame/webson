@@ -40,6 +40,7 @@ type Connection struct {
 	status     Status
 	startClose bool
 	closed     bool
+	started    bool
 	lastPing   time.Time
 	lastPong   time.Time
 	statusLock sync.Mutex
@@ -162,6 +163,7 @@ func (con *Connection) KeepPing() {
 					break
 				}
 				timeout = true
+				con.updateStatus(StatusTimeout)
 			} else {
 				if timeout {
 					// remember to recover from timeout
@@ -173,7 +175,7 @@ func (con *Connection) KeepPing() {
 }
 
 func (con *Connection) Dispatch(t MessageType, p []byte) error {
-	m := &Message{Type: t, Payload: p}
+	m := &Message{Type: t, payload: p}
 	if e := con.patchMsg(m); e != nil {
 		return e
 	}
@@ -210,7 +212,7 @@ func (con *Connection) DispatchReader(t MessageType, r io.Reader) (e error) {
 			break
 		}
 		stream := msg.spawnVessel()
-		stream.Payload = vessel[0:n]
+		stream.payload = vessel[0:n]
 		if n < chunkSize {
 			stream.isComplete = true
 		}
@@ -289,10 +291,10 @@ func (con *Connection) Apply(h EventHandler) {
 	con.eventPool = append(con.eventPool, h)
 }
 
-func (con *Connection) Revoke(h EventHandler) {
+func (con *Connection) Revoke(name string) {
 	idx := -1
 	for i, e := range con.eventPool {
-		if e.Name() == h.Name() {
+		if e.Name() == name {
 			idx = i
 			break
 		}
@@ -303,7 +305,13 @@ func (con *Connection) Revoke(h EventHandler) {
 }
 
 func (con *Connection) OnReady(action func(Adapter)) {
-	con.OnStatus(StatusReady, func(s Status, a Adapter) { action(a) })
+	con.OnStatus(StatusReady, func(s Status, a Adapter) {
+		if s != StatusYetReady {
+			// OnReady only handle status change from StatusYetReady
+			return
+		}
+		action(a)
+	})
 }
 
 func (con *Connection) OnStatus(s Status, action func(Status, Adapter)) {

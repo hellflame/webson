@@ -20,14 +20,6 @@ const (
 	// BinaryMessage indiacates this message is binary data.
 	BinaryMessage = MessageType(2)
 
-	// StreamMessage indicates this message is part of a stream data to multiplex in websocket.
-	// StreamMessage is non-standard.
-	// Message payload will have 1 bit for stream cancel, 31 bits for stream identifier.
-	// It's specially implemented for concurrent message exchange scenario.
-	// Inspired by http/2.0
-	// Taking some reference from https://datatracker.ietf.org/doc/html/rfc6455#section-5.4
-	// StreamMessage = MessageType(4)
-
 	// CloseMessage indicates that side will not send any more data. Stream Message will no
 	CloseMessage = MessageType(8)
 
@@ -85,7 +77,7 @@ type Message struct {
 
 	// entity is payload buffer when it's receiving, or raw frame data when it's sending
 	entity  bytes.Buffer
-	Payload []byte // only used when creating msg
+	payload []byte // only used when creating msg
 	Type    MessageType
 }
 
@@ -128,7 +120,7 @@ func (m *Message) maskPayload(payload []byte) {
 }
 
 func (m *Message) assemble() error {
-	payload := m.Payload
+	payload := m.payload
 	if m.send.doCompress {
 		buf := bytes.NewBuffer(nil)
 		w, e := flate.NewWriter(buf, m.send.compressLevel)
@@ -281,7 +273,7 @@ func (m *Message) merge(more *Message) error {
 
 // split msg for write
 func (m *Message) split(sizeLimit int) []*Message {
-	originSize := len(m.Payload)
+	originSize := len(m.payload)
 	if originSize == 0 {
 		return []*Message{{
 			send:       m.send,
@@ -308,7 +300,7 @@ func (m *Message) split(sizeLimit int) []*Message {
 			isComplete: i == int(chunks)-1,
 
 			Type:    m.Type,
-			Payload: m.Payload[l:r],
+			payload: m.payload[l:r],
 		}
 		result[i] = msg
 	}
