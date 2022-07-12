@@ -14,6 +14,7 @@ func main() {
 	if e != nil {
 		panic(e)
 	}
+
 	fmt.Println("input something and press ENTER")
 	ws.OnMessage(webson.TextMessage, collectAndEcho)
 
@@ -25,6 +26,7 @@ func main() {
 func collectAndEcho(m *webson.Message, a webson.Adapter) {
 	msg, _ := m.Read()
 	fmt.Println("from server:", string(msg))
+
 	var input string
 	fmt.Scanln(&input)
 	if input == "" {
