@@ -27,7 +27,7 @@ func main() {
 	fmt.Println("waiting for messages......")
 	ws.OnMessage(webson.TextMessage, func(m *webson.Message, a webson.Adapter) {
 		msg, _ := m.Read()
-		fmt.Println("from server:", string(msg))
+		fmt.Println("topic message:", string(msg))
 	})
 
 	if e := ws.Start(); e != nil {
