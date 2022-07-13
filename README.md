@@ -448,6 +448,12 @@ But, the masking key is actually in the data frame, it makes it not that secure.
 
 You can also make the *Server* to send masking message frame by setting `Config.AlwaysMask = true`.
 
+#### iv) Streaming
+
+As this is not quite a *Standard* stream protocol, streaming will surely make you speak a new *dialect*. *Streaming* will allow you to send multiple large messages __concurrently__. You can enable *Streaming* by setting `Config{EnableStreams: true}` to enable streaming protocol. 
+
+Unlike __private mask key__ or __private magic key__, streaming protocol is a __negotiable__ feature.
+
 
 
 ## Component Reference
