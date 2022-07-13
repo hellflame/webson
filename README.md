@@ -379,7 +379,7 @@ ws.OnMessage(webson.TextMessage, func(m *webson.Message, a webson.Adapter) {
 ws.Start()
 ```
 
-*Client*
+*Client*:
 
 ```go
 ws, e := webson.Dial("ws://127.0.0.1:8000/client", nil)
@@ -447,6 +447,8 @@ But, the masking key is actually in the data frame, it makes it not that secure.
 `Webson` allows you to make it more secure by setting a __private mask key__ in `Config.PrivateMask` , which need to be a `[]byte` with size of the times of 4. You can see this as another kind of password with the ability the __symmetrically encrypt__ the message. This won't make the masking process any slower.
 
 You can also make the *Server* to send masking message frame by setting `Config.AlwaysMask = true`.
+
+
 
 ## Component Reference
 
