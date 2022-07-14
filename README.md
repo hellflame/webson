@@ -454,6 +454,48 @@ As this is not quite a *Standard* stream protocol, streaming will surely make yo
 
 Unlike __private mask key__ or __private magic key__, streaming protocol is a __negotiable__ feature.
 
+All the features can be applied when you __Dial__ the server or __TakeOver__ the client, here shows the key step:
+
+*Server*:
+
+```go
+ws, e := webson.TakeOver(w, r, &webson.Config{
+  AlwaysMask:    true,
+  EnableStreams: true,
+  MagicKey:      []byte("masking here & there"),
+  PrivateMask:   []byte("bytes length is times 4!"),
+  HeaderVerify: func(h http.Header) bool {
+    if h.Get("Secret") != "secretkey" {
+      fmt.Println("Not Secret!!")
+      return false
+    }
+    if h.Get("Authorization") != fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte("user:pass"))) {
+      fmt.Println("User & Password Miss Match!!")
+      return false
+    }
+    return true
+  },
+})
+```
+
+*Client*:
+
+```go
+ws, e := webson.Dial("ws://user:pass@127.0.0.1:8000", &webson.DialConfig{
+  Config: webson.Config{
+    AlwaysMask:    true,
+    EnableStreams: true,
+    MagicKey:      []byte("masking here & there"),
+    PrivateMask:   []byte("bytes length is times 4!"),
+  },
+  ClientConfig: webson.ClientConfig{
+    ExtraHeaders: map[string]string{"Secret": "secretkey"},
+  },
+})
+```
+
+[Full Example](examples/private-protocol)
+
 
 
 ## Component Reference
