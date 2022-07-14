@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/private", func(w http.ResponseWriter, r *http.Request) {
 		ws, e := webson.TakeOver(w, r, &webson.Config{
 			AlwaysMask:    true,
 			EnableStreams: true,

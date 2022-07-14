@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	ws, e := webson.Dial("ws://user:pass@127.0.0.1:8000", &webson.DialConfig{
+	ws, e := webson.Dial("ws://user:pass@127.0.0.1:8000/private", &webson.DialConfig{
 		Config: webson.Config{
 			AlwaysMask:    true,
 			EnableStreams: true,
