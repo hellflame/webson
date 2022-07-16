@@ -139,10 +139,16 @@ func (m *Message) assemble() error {
 		}
 		payload = payload[:len(payload)-4]
 	}
-	msgSize := len(payload)
 	if m.send.streamlize {
-		msgSize += streamBytes // bytes for stream id
+		streamVessel := make([]byte, len(payload)+streamBytes)
+		binary.BigEndian.PutUint16(streamVessel[:streamBytes], uint16(m.send.streamId))
+		if m.send.cancelStream {
+			streamVessel[0] |= 0b1000_0000
+		}
+		copy(streamVessel[streamBytes:], payload)
+		payload = streamVessel
 	}
+	msgSize := len(payload)
 	frameSize := 2 + msgSize // 2 bytes for meta
 	if m.send.doMask {
 		frameSize += 4 // 4 bytes for mask
@@ -190,13 +196,6 @@ func (m *Message) assemble() error {
 		copy(frame[pos:], instantMask)
 		pos += 4
 	}
-	if m.send.streamlize {
-		binary.BigEndian.PutUint16(frame[pos:], uint16(m.send.streamId))
-		if m.send.cancelStream {
-			frame[pos] |= 0b1000_0000
-		}
-		pos += streamBytes
-	}
 	copy(frame[pos:], payload)
 	_, e := m.entity.Write(frame)
 	return e
@@ -225,7 +224,7 @@ func (m *Message) parseMeta(raw []byte) error {
 	if rsv1 && !m.config.negotiate.compressable {
 		return errors.New("unrecognized rsv1")
 	}
-	if rsv2 && !m.config.negotiate.compressable {
+	if rsv2 && !m.config.negotiate.streamable {
 		return errors.New("unrecognized rsv2")
 	}
 	if rsv3 {
@@ -249,6 +248,9 @@ func (m *Message) parseMeta(raw []byte) error {
 func (m *Message) merge(more *Message) error {
 	if m.config.triggerOnStart {
 		// may block reading from connection
+		m.receive.updateLock.Lock()
+		defer m.receive.updateLock.Unlock()
+
 		if m.receive.poolReading {
 			moreMsg, e := io.ReadAll(&more.entity)
 			if e != nil {
@@ -260,8 +262,6 @@ func (m *Message) merge(more *Message) error {
 			}
 			return nil
 		}
-		m.receive.updateLock.Lock()
-		defer m.receive.updateLock.Unlock()
 	}
 	m.receive.UpdatedAt = more.receive.CreatedAt
 	m.isComplete = more.isComplete
@@ -333,6 +333,9 @@ func (m *Message) ReadIter(chanSize int) <-chan []byte {
 	if m.config.synchronized {
 		panic("synchronize ReadIter")
 	}
+	m.receive.updateLock.Lock()
+	defer m.receive.updateLock.Unlock()
+
 	m.receive.poolReading = true
 	m.receive.msgPool = make(chan []byte, chanSize)
 

@@ -98,8 +98,8 @@ func (c *Config) setup() error {
 	if c.ChunkSize < DEFAULT_CHUNK_SIZE {
 		c.ChunkSize = DEFAULT_CHUNK_SIZE
 	}
-	if c.BufferSize < DEFAULT_CHUNK_SIZE {
-		c.BufferSize = DEFAULT_CHUNK_SIZE
+	if c.BufferSize == 0 {
+		c.BufferSize = DEFAULT_BUFFER_SIZE
 	}
 	if c.Timeout == nil {
 		c.Timeout = &Timeout{

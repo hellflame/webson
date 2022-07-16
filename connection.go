@@ -172,6 +172,7 @@ func (con *Connection) KeepPing() {
 			}
 		}
 	}
+	println("ping break")
 }
 
 func (con *Connection) Dispatch(t MessageType, p []byte) error {
@@ -206,22 +207,25 @@ func (con *Connection) DispatchReader(t MessageType, r io.Reader) (e error) {
 	var vessel = make([]byte, chunkSize)
 	for {
 		n, e := r.Read(vessel)
-		if e != nil {
-			msg.send.cancelStream = true
-			con.writeSingleFrame(msg)
-			break
-		}
 		stream := msg.spawnVessel()
 		stream.payload = vessel[0:n]
-		if n < chunkSize {
-			stream.isComplete = true
+
+		if e != nil {
+			if e == io.EOF {
+				stream.isComplete = true
+				return con.writeSingleFrame(stream)
+			}
+			stream.send.cancelStream = true
+			if ew := con.writeSingleFrame(stream); ew != nil {
+				return ew
+			}
+			return e
 		}
-		e = con.writeSingleFrame(stream)
-		if e != nil || n < chunkSize {
-			break
+
+		if e = con.writeSingleFrame(stream); e != nil {
+			return e
 		}
 	}
-	return
 }
 
 // patchMsg keeps write Message intact & correct
@@ -230,6 +234,7 @@ func (con *Connection) patchMsg(m *Message) error {
 		doCompress:    con.compressable && !m.IsControl(),
 		compressLevel: con.compressLevel,
 		doMask:        con.isClient,
+		streamlize:    con.streamable && !m.IsControl(),
 	}
 	m.config = &msgConfig{
 		negotiate:      &con.negoSet,
@@ -237,7 +242,7 @@ func (con *Connection) patchMsg(m *Message) error {
 		triggerOnStart: con.config.TriggerOnStart,
 	}
 
-	if con.streamable && !m.IsControl() {
+	if m.send.streamlize {
 		con.streamIdLock.Lock()
 		loop := false
 		for {
@@ -273,7 +278,7 @@ func (con *Connection) writeSingleFrame(m *Message) error {
 	if e := m.assemble(); e != nil {
 		return e
 	}
-	if con.streamable {
+	if m.send.streamlize {
 		// only lock when it's streaming, or dead lock may occur
 		con.writeLock.Lock()
 		defer con.writeLock.Unlock()
@@ -361,12 +366,12 @@ func (con *Connection) triggerMessage(m *Message) {
 }
 
 func (con *Connection) Start() error {
-	raw := bufio.NewReaderSize(con.rawConnection, con.config.BufferSize)
 	defer func() {
 		con.updateStatus(StatusClosed)
 		con.cleanClose()
 	}()
 
+	reader := bufio.NewReaderSize(con.rawConnection, con.config.BufferSize)
 	con.updateStatus(StatusReady)
 
 	triggerOnStart := con.config.TriggerOnStart
@@ -374,7 +379,7 @@ func (con *Connection) Start() error {
 	var vessel4 = make([]byte, 4)
 	var vessel8 = make([]byte, 8)
 	for {
-		if s, e := raw.Read(vessel2); e != nil || s != 2 {
+		if s, e := reader.Read(vessel2); e != nil || s != 2 {
 			return exceptEOF(e)
 		}
 		msg := &Message{
@@ -393,19 +398,19 @@ func (con *Connection) Start() error {
 			return e
 		}
 		if msg.receive.size == 126 {
-			if s, e := raw.Read(vessel2); e != nil || s != 2 {
+			if s, e := reader.Read(vessel2); e != nil || s != 2 {
 				return errors.New("msg size not given")
 			}
 			msg.receive.size = int64(binary.BigEndian.Uint16(vessel2))
 		} else if msg.receive.size == 127 {
-			if s, e := raw.Read(vessel8); e != nil || s != 8 {
+			if s, e := reader.Read(vessel8); e != nil || s != 8 {
 				return errors.New("msg size not given")
 			}
 			msg.receive.size = int64(binary.BigEndian.Uint64(vessel8))
 		}
 
 		if msg.receive.masked {
-			if s, e := raw.Read(vessel4); e != nil || s != 4 {
+			if s, e := reader.Read(vessel4); e != nil || s != 4 {
 				return errors.New("mask key not given")
 			}
 			msg.setMask(vessel4)
@@ -415,18 +420,18 @@ func (con *Connection) Start() error {
 			if con.config.MaxPayloadSize != 0 && msg.receive.size > int64(con.config.MaxPayloadSize) {
 				return MsgTooLarge{}
 			}
-			payload, e := raw.Peek(int(msg.receive.size))
+			payload, e := reader.Peek(int(msg.receive.size))
 			if e != nil {
 				return exceptEOF(e)
 			}
-			raw.Discard(len(payload))
+			reader.Discard(len(payload))
 			if msg.receive.masked {
 				msg.maskPayload(payload)
 			}
 			if msg.receive.isStream {
 				cancel := payload[0]&0b1000_0000 != 0
 				payload[0] = payload[0] & 0b0111_1111
-				msg.receive.streamId = int(binary.BigEndian.Uint64(payload[:streamBytes]))
+				msg.receive.streamId = int(binary.BigEndian.Uint16(payload[:streamBytes]))
 				if msg.receive.streamId == 0 {
 					return errors.New("invalid stream id")
 				}
@@ -448,7 +453,9 @@ func (con *Connection) Start() error {
 			}
 		} else {
 			// no matter streaming or not
-			if pending, exist := con.pendingStreams[msg.receive.streamId]; exist {
+			streamId := msg.receive.streamId
+			if pending, exist := con.pendingStreams[streamId]; exist {
+				// try to complete msg
 				if e := pending.merge(msg); e != nil {
 					return e
 				}
@@ -456,11 +463,11 @@ func (con *Connection) Start() error {
 					if !triggerOnStart {
 						con.triggerMessage(pending)
 					}
-					delete(con.pendingStreams, msg.receive.streamId)
+					delete(con.pendingStreams, streamId)
 				}
 			} else {
 				if !msg.isComplete {
-					con.pendingStreams[msg.receive.streamId] = msg
+					con.pendingStreams[streamId] = msg
 					if triggerOnStart {
 						con.triggerMessage(msg)
 					}

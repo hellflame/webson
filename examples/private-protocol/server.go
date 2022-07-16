@@ -26,7 +26,7 @@ func main() {
 				}
 				if h.Get("Authorization") != fmt.Sprintf("Basic %s",
 					base64.StdEncoding.EncodeToString([]byte("user:pass"))) {
-					fmt.Println("User & Password Miss Match!!")
+					fmt.Println("User or Password Miss Match!!")
 					return false
 				}
 				fmt.Println("header verify passed.")

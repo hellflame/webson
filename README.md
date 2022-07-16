@@ -496,7 +496,19 @@ ws, e := webson.Dial("ws://user:pass@127.0.0.1:8000", &webson.DialConfig{
 
 [Full Example](examples/private-protocol)
 
+### More Cases
 
+#### i) [Message Multiplexing](examples/multiplexing)
+
+Every Message goes concurrently.
+
+#### ii) [Override Default Message Handler](examples/override-default)
+
+Maybe you don't want to __Pong__ immediately.
+
+#### iii) [Relay Bridge](examples/relay)
+
+Maybe you want a simple server to __relay__ different clients.
 
 ## Component Reference
 
