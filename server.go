@@ -51,7 +51,8 @@ func TakeOver(w http.ResponseWriter, r *http.Request, c *Config) (*Connection, e
 
 	verified := make(map[string]string)
 	streamable := false
-	if c.MaxStreams > 0 {
+	maxStreams := c.MaxStreams
+	if maxStreams > 0 {
 		// negotiate max support streams, choose the little one
 		clientWant := header.Get("Webson-Max-Streams")
 		if clientWant != "" {
@@ -60,11 +61,11 @@ func TakeOver(w http.ResponseWriter, r *http.Request, c *Config) (*Connection, e
 				sendHTTPError(w, http.StatusBadRequest)
 				return nil, errors.New("invalid max streams")
 			}
-			if clientSuggest < c.MaxStreams {
-				c.MaxStreams = clientSuggest
+			if clientSuggest < maxStreams {
+				maxStreams = clientSuggest
 			}
 			streamable = true
-			verified["Webson-Max-Streams"] = strconv.Itoa(c.MaxStreams)
+			verified["Webson-Max-Streams"] = strconv.Itoa(maxStreams)
 		}
 	}
 	compressable := false
@@ -108,8 +109,11 @@ func TakeOver(w http.ResponseWriter, r *http.Request, c *Config) (*Connection, e
 
 		config: c,
 		negoSet: negoSet{
-			streamable:   streamable,
-			compressable: compressable,
+			streamable: streamable,
+			maxStreams: maxStreams,
+
+			compressable:  compressable,
+			compressLevel: c.CompressLevel,
 		},
 	}
 	con.prepare()

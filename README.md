@@ -506,9 +506,13 @@ Every Message goes concurrently.
 
 Maybe you don't want to __Pong__ immediately.
 
-#### iii) [Relay Bridge](examples/relay)
+#### iii) [Compression](examples/compression)
 
-Maybe you want a simple server to __relay__ different clients.
+When the message is compression profitable, turn on the __Compression__. Such as `json` , `xml` messages.
+
+#### iv) [Benchmark](examples/benchmark)
+
+__How Fast__ can one side send & other side can process.
 
 ## Component Reference
 

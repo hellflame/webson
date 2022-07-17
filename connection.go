@@ -172,7 +172,6 @@ func (con *Connection) KeepPing(pingInterval, pongTimeout int) {
 			}
 		}
 	}
-	println("ping break")
 }
 
 func (con *Connection) Dispatch(t MessageType, p []byte) error {
