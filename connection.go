@@ -17,7 +17,7 @@ type Adapter interface {
 	Dispatch(MessageType, []byte) error
 	DispatchReader(MessageType, io.Reader) error
 	RefreshPongTime()
-	KeepPing()
+	KeepPing(int, int)
 	Name() string
 	Group() string
 }
@@ -78,7 +78,7 @@ func (con *Connection) prepare() {
 	})
 
 	if con.config.PingInterval > 0 {
-		go con.KeepPing()
+		go con.KeepPing(con.config.PingInterval, con.config.Timeout.PongTimeout)
 	}
 }
 
@@ -145,20 +145,20 @@ func (con *Connection) RefreshPongTime() {
 	con.lastPong = time.Now()
 }
 
-func (con *Connection) KeepPing() {
+func (con *Connection) KeepPing(pingInterval, pongTimeout int) {
 	timeout := false
-	pongTimeout := int64(con.config.Timeout.PongTimeout)
+	// pongTimeout := int64(con.config.Timeout.PongTimeout)
 	for {
 		switch con.Ping().(type) {
 		case WriteAfterClose:
 			break
 		default:
 		}
-		time.Sleep(time.Duration(con.config.PingInterval) * time.Second)
+		time.Sleep(time.Duration(pingInterval) * time.Second)
 
 		if pongTimeout > 0 {
 			// check whether last ping has pong response
-			if con.lastPong.Unix()-con.lastPing.Unix() > pongTimeout {
+			if con.lastPong.Unix()-con.lastPing.Unix() > int64(pongTimeout) {
 				if con.status == StatusClosed {
 					break
 				}
