@@ -1,8 +1,8 @@
 # Webson
 
-Webson is a event-driven websocket-compatable develepment kit for Golang. It's read `/'websən/` , meaning `Websocket-is-On`, `Websocket-and-so-On`. 
+Webson is a event-driven websocket-compatible develepment kit for Golang. It's read `/'websən/` , meaning `Websocket-is-On`, `Websocket-and-so-On`. 
 
-Webson is not just a websocket sdk, but a __flexable__, __light-weight__, __event-driven__, __frame-based__ tcp development framework for golang. It's compatable with [websocket RFC6455](https://datatracker.ietf.org/doc/html/rfc6455) prividing client & server APIs, and it's upgraded to handle more complex scenarios among pure server side network applications.
+Webson is not just a websocket sdk, but a __flexable__, __light-weight__, __event-driven__, __frame-based__ tcp development framework for golang. It's compatible with [websocket RFC6455](https://datatracker.ietf.org/doc/html/rfc6455) prividing client & server APIs, and it's upgraded to handle more complex scenarios among pure server side network applications.
 
 ## Aim
 
@@ -636,7 +636,125 @@ When the message is kind of huge or in some *Reader*, you can use __DispatchRead
 
 ### 4. Pool Manage
 
+When you want to broadcast a message to all or some of the live connections, no matter it's server side or client side, you can create a pool to do that. 
 
+#### i) NewPool
+
+*Don't create a Pool by &Pool{xxx}, there are initial actions in NewPool*
+
+```go
+func NewPool(c *PoolConfig) *Pool
+```
+
+You can decide max connections with `PoolConfig.Size`, this is useful on server side. If there are clients to add to the pool, use `PoolConfig.ClientRetry` & `PoolConfig.RetryInterval` to control reconnection.
+
+#### ii) Add
+
+```go
+func (p *Pool) Add(c *Connection, config *NodeConfig) error
+```
+
+`Add` takes one connection into the pool, *no matter* it's client or server side. 
+
+Note that the `*Connection` __should not__ start yet. The connection's life cycle will be take over by the *Pool*. Though, you can still bind handlers to the `*Connection`, they __won't be overrided__ by the *Pool*.
+
+`*NodeConfig` is mainly to decide this connection's `Name` and `Group`.
+
+#### iii) Dispatch
+
+```go
+func (p *Pool) Dispatch(t MessageType, payload []byte)
+```
+
+Broadcast message to all connections.
+
+#### iv) ToClients
+
+```go
+func (p *Pool) ToClients(t MessageType, payload []byte)
+```
+
+Broadcast message only to client connections (*from Dial*).
+
+#### v) ToServers
+
+```go
+func (p *Pool) ToServers(t MessageType, payload []byte)
+```
+
+Broadcast message only to server connections (*from TakeOver*).
+
+#### vi) ToGroup
+
+```go
+func (p *Pool) ToGroup(gName string, t MessageType, payload []byte)
+```
+
+Broadcast message to specific group.
+
+#### vii) ToPick
+
+```go
+func (p *Pool) ToPick(name string, t MessageType, payload []byte) bool
+```
+
+Send message to the connection with the given name.
+
+#### viii) Except
+
+```go
+func (p *Pool) Except(name string, t MessageType, payload []byte)
+```
+
+Broadcast message to the connections except the given name.
+
+#### ix) Wait
+
+```go
+func (p *Pool) Wait()
+```
+
+`Wait` is useful when this side is all clients, this method will wait until no connection alive. __No Need__ to use this on server side, `http` service will hold the whole connection period.
+
+#### x) Close
+
+```go
+(p *Pool) Close()
+```
+
+Manually trigger the pool close. Every connection will try to close.
+
+#### xi) CastOut
+
+```go
+func (p *Pool) CastOut(c *Connection)
+```
+
+Castout a connection from the pool.
+
+```go
+func (p *Pool) CastOutByName(name string) bool
+```
+
+Castout a connection with the given name, if there's no connection with the name, a `false` will be returned.
+
+#### xii) OnStatus
+
+```go
+func (p *Pool) OnStatus(action func(Status, Adapter))
+```
+
+A general `OnStatus` handler for all connections, if any connection has status change, this handler will be triggered.
+
+#### xiii) OnMessage
+
+```go
+func (p *Pool) OnMessage(action func(*Message, Adapter))
+```
+
+A general `OnMessage` handler for all connections, if any connection receives a message, this handler will be triggered.
+
+Noted that the connection's trigger mode will be reserved here. If connections with and without  `TriggerOnStart` comes to the same pool, this `OnMessage` will act the same as they are in the original connections. __Better__ to keep the *trigger mode* the same.
 
 ## Interface Reference
 

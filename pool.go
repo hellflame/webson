@@ -30,6 +30,8 @@ func (p *poolEventProxy) OnMessage(m *Message, a Adapter) {
 	p.messageHandler(m, a)
 }
 
+// Pool is the connection pool for any client or server connections.
+// Don't create one just use &Pool{xxx}, use NewPool instead.
 type Pool struct {
 	clients []*Connection
 	servers []*Connection
@@ -43,6 +45,7 @@ type Pool struct {
 	closed   bool
 }
 
+// NewPool create a usable connection pool
 func NewPool(c *PoolConfig) *Pool {
 	if c == nil {
 		c = &PoolConfig{}
@@ -58,14 +61,17 @@ func NewPool(c *PoolConfig) *Pool {
 	}
 }
 
+// OnStatus will bind status handler for all connections
 func (p *Pool) OnStatus(action func(Status, Adapter)) {
 	p.statusHandler = action
 }
 
+// OnMessage will bind message handler for all connections
 func (p *Pool) OnMessage(action func(*Message, Adapter)) {
 	p.messageHandler = action
 }
 
+// Add takes one connection to the pool, it can be a client or server connection
 func (p *Pool) Add(c *Connection, config *NodeConfig) error {
 	if config == nil {
 		config = &NodeConfig{}
@@ -150,10 +156,12 @@ func (p *Pool) startServer(c *Connection) {
 	p.remove(c)
 }
 
+// CastOut a connection
 func (p *Pool) CastOut(c *Connection) {
 	p.remove(c)
 }
 
+// CastOut a connection with the given name
 func (p *Pool) CastOutByName(name string) bool {
 	p.poolLock.Lock()
 	c, ok := p.entryMap[name]
@@ -165,6 +173,7 @@ func (p *Pool) CastOutByName(name string) bool {
 	return ok
 }
 
+// Dispatch will broadcast the message to all connections in the pool
 func (p *Pool) Dispatch(t MessageType, payload []byte) {
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
@@ -174,6 +183,7 @@ func (p *Pool) Dispatch(t MessageType, payload []byte) {
 	}
 }
 
+// ToClients will broadcast the message to client side connections (from Dial)
 func (p *Pool) ToClients(t MessageType, payload []byte) {
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
@@ -182,6 +192,7 @@ func (p *Pool) ToClients(t MessageType, payload []byte) {
 	}
 }
 
+// ToServers will broadcast the message to server side connections (from TakeOver)
 func (p *Pool) ToServers(t MessageType, payload []byte) {
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
@@ -190,6 +201,7 @@ func (p *Pool) ToServers(t MessageType, payload []byte) {
 	}
 }
 
+// ToClients will broadcast the message to the given group connections
 func (p *Pool) ToGroup(gName string, t MessageType, payload []byte) {
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
@@ -201,6 +213,7 @@ func (p *Pool) ToGroup(gName string, t MessageType, payload []byte) {
 	}
 }
 
+// ToPick will try to send message to the connection with given name
 func (p *Pool) ToPick(name string, t MessageType, payload []byte) bool {
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
@@ -212,6 +225,7 @@ func (p *Pool) ToPick(name string, t MessageType, payload []byte) bool {
 	return false
 }
 
+// Except will broadcast message to all connections except the given name
 func (p *Pool) Except(name string, t MessageType, payload []byte) {
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
@@ -224,6 +238,7 @@ func (p *Pool) Except(name string, t MessageType, payload []byte) {
 	}
 }
 
+// Close the pool, return when all connection closed
 func (p *Pool) Close() {
 	p.closed = true
 	p.poolLock.Lock()
@@ -234,6 +249,7 @@ func (p *Pool) Close() {
 	p.Wait()
 }
 
+// Wait will wait until all connection is dead.
 func (p *Pool) Wait() {
 	for {
 		time.Sleep(time.Duration(client_retry_interval) * time.Second)
