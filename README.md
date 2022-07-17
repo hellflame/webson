@@ -947,3 +947,38 @@ There's just `message multiplexing` not quite defined in websocket in the [webso
 In fact, I was absessed with `HTTP/2` once, especially the `server push` , but it's after all a browser optimized `http` protocol, server side applications can't communicate with it that handy when in full-duplex senarios.
 
 It's just most popular golang websocket developemnt kits are quite primative, with only one loop reading from connection, saying it's more efficient that way. `Webson` wants to do better.
+
+### Streamable
+
+This is a common websocket fragment packet with `StreamId`
+
+```
+0                   1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-------+-+-------------+-------------------------------+
+|F|R|R|R| opcode|M| Payload len |    Extended payload length    |
+|I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
+|N|V|V|V|       |S|             |   (if payload len==126/127)   |
+| |1|2|3|       |K|             |                               |
++-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
+|     Extended payload length continued, if payload len == 127  |
++ - - - - - - - - - - - - - - - +-------------------------------+
+|                               |Masking-key, if MASK set to 1  |
++-------------------------------+-------------------------------+
+| Masking-key (continued)       |C|  StreamID  (Payload Data)   |
++-------------------------------- - - - - - - - - - - - - - - - +
+:                     Payload Data continued ...                :
++ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
+|                     Payload Data continued ...                |
++---------------------------------------------------------------+
+```
+
+If the message is streamlized, the first `2 Bytes` of payload will be used for streams
+
+```
+|C|  StreamID  (Payload)        |
+```
+
+`1 bit` for cancel the stream, the left `15 bit` for `StreamId `. So the max stream id will be `32768`. Once the id is used up, `Error` will occur.
+
+The `StreamId` used up happens when all messages are streaming not ended, which means 32768 streams are sending messages. This usually won't happen. Once the message is finished, `StreamId` will be released for new message. Right, the connection will try to find a free `StreamId`.
