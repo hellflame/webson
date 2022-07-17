@@ -7,16 +7,18 @@ import (
 	"net/http"
 )
 
+// PoolConfig is for creating a pool
 type PoolConfig struct {
 	Name          string // use for connection apply
 	Size          int    // max connections the pool can hold, 0 to be unlimited
 	ClientRetry   int    // client retry count
-	RetryInterval int
+	RetryInterval int    // client retry interval
 }
 
+// NodeConfig is for node append in a pool
 type NodeConfig struct {
-	Name  string
-	Group string
+	Name  string // node name, will be a random string if empty
+	Group string // node group
 }
 
 // actual config for one webson connection after negotiation
@@ -36,6 +38,7 @@ type msgConfig struct {
 	synchronized   bool
 }
 
+// DialConfig is for client Dial, combined with general webson Config & client only ClientConfig
 type DialConfig struct {
 	Config
 	ClientConfig
@@ -46,40 +49,41 @@ type ClientConfig struct {
 	url    *simpleUrl
 	dialer func() (net.Conn, error)
 
-	UseTLS    bool
-	TLSConfig *tls.Config
+	UseTLS    bool        // use TLS connection no matter the what's the url
+	TLSConfig *tls.Config // TLS config for this connection
 
-	ExtraHeaders map[string]string
+	ExtraHeaders map[string]string // extra http headers sent for upgrading
 }
 
+// Timeout is the config for all timeouts
 type Timeout struct {
-	HandshakeTimeout int
-	PongTimeout      int
-	CloseTimeout     int
+	HandshakeTimeout int // max wait time for upgrading handshakes
+	PongTimeout      int // max wait time for this side to receive a pong after ping
+	CloseTimeout     int // max wait time for other side to send Close after this side send a Close
 }
 
 // Config is the programer preferred options
 type Config struct {
-	HeaderVerify func(http.Header) bool
+	HeaderVerify func(http.Header) bool // verify http headers when upgrade connections
 
-	EnableStreams  bool
-	MaxStreams     int
-	ChunkSize      int
-	BufferSize     int
-	MaxPayloadSize int // single data frame size limit
-	TriggerOnStart bool
-	Synchronize    bool
+	EnableStreams  bool // allow streaming for this connection
+	MaxStreams     int  // max streams this side can take. little one will be choosed.
+	ChunkSize      int  // max fragment payloa size
+	BufferSize     int  // buffer size for reading from connection
+	MaxPayloadSize int  // single data frame size limit
+	TriggerOnStart bool // message trigger on first fragment
+	Synchronize    bool // handlers will be triggered on the main goroutine with the Start
 
-	EnableCompress bool
-	CompressLevel  int
+	EnableCompress bool // allow compression for this connection
+	CompressLevel  int  // compress level defined in deflate
 
-	Timeout *Timeout
+	Timeout *Timeout // all timeout configs
 
-	PingInterval int
+	PingInterval int // how often to ping the other side
 
-	MagicKey    []byte
-	PrivateMask []byte
-	AlwaysMask  bool
+	MagicKey    []byte // private magic key, default magic key will be used if not set
+	PrivateMask []byte // extra masking key
+	AlwaysMask  bool   // mask message even this is the server side
 }
 
 func (c *Config) setup() error {

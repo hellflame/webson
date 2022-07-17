@@ -220,7 +220,7 @@ Be aware that __Status__ handler is still triggered asynchronously. And the mess
 
 [example](examples/synchronized)
 
-### 3. Large Entity Transmission
+### 3. <span id="eg-large-entity">Large Entity Transmission</span>
 
 When you want to transmit a large message, like a *very large file*, you don't want the other side to react only after receiving the complete data, or it can be processed piece by piece. You can set `webson.Config{TriggerOnStart: true}` , so that the message handler can be triggered once this side receive the first fragment of the message.
 
@@ -550,7 +550,7 @@ ws.OnStatus(webson.StatusReady, func(prev Status, a Adapter) {
 
 The second argument is a `interface` named [Adapter](#adapter), which is mainly used for `Sending Messages`, we'll discuss it in detail later in [__Message Dispatching__](#message-dispatching). It's  actually the instance of `*Connection`, the current connection itself. You can simply use `*Connection` returned from `Dial` or `TakeOver` as the bind method is a closure function.
 
-#### ii) OnMessage
+#### ii) <span id="on-message">OnMessage</span>
 
 ```go
 func (con *Connection) OnMessage(t MessageType, action func(*Message, Adapter))
@@ -586,7 +586,55 @@ __Apply__ takes different `EventHandler` implementations as input, here you can 
 
 ### <span id="message-dispatching">2. Message Reading</span>
 
+There are two kinds of *Message Reading*, __Read__ at once or __ReadIter__ from message stream. Here is the [example](#eg-large-entity).
+
+#### i) Read
+
+```go
+func (m *Message) Read() ([]byte, error)
+```
+
+When the `Config.TriggerOnStart` is not set, *webson* will trigger the [handler](#on-message) when the message is completely received, __Read__ will return the full content.
+
+When the `Config.TriggerOnStart = true` is set, *webson* will trigger the handler once the first fragment reached this side, you __may not__ get the complete msg at once, and you will get an error __MsgYetComplete__, you have to read it multiple times until it's complete. 
+
+#### ii) ReadIter
+
+```go
+func (m *Message) ReadIter(chanSize int) <-chan []byte
+```
+
+__ReadIter__ will always generate a `<-chan []byte` for you to *iterate*, no matter the `Config.TriggerOnStart`.
+
+*chanSize* will decide the channel size, and it must be __at least 1__, because there are already chunks to send to the channel, *0 channel* will cause dead lock. 
+
+The main usage of this __ReadIter__ is for processing messages chunk by chunk, and respond to the message at first fragment. There are *extra costs* for it comparing to the simple __Read__, but don't hesitate to use it when it's necessary.
+
 ### <span id="message-dispatching">3. Message Dispatching</span>
+
+There are two kinds of *Message Dispatching* for different senarios, __Dispatch__ for simple use and __DispatchReader__ for large entity.
+
+Note that `MessageType >= 8` is __Control Type__ , the `payload` can't be longer than __125__ bytes. [RFC-Control Frames](https://datatracker.ietf.org/doc/html/rfc6455#section-5.5)
+
+#### i) Dispatch
+
+```go
+func (con *Connection) Dispatch(t MessageType, p []byte) error
+```
+
+Choose a `MessageType` and give the `payload` bytes to dispatch message to other side.
+
+Large payload (larger than chunk size) will be split into chunks for sent.
+
+#### ii) DispatchReader
+
+```go
+func (con *Connection) DispatchReader(t MessageType, r io.Reader) error
+```
+
+When the message is kind of huge or in some *Reader*, you can use __DispatchReader__.
+
+### 4. Pool Manage
 
 
 
@@ -594,15 +642,129 @@ __Apply__ takes different `EventHandler` implementations as input, here you can 
 
 ### 1. <span id="adapter">Adapter</span>
 
+```go
+type Adapter interface {
+  // for connection manage
+  Close()
 
+  // for message writing
+  Ping() error
+  Pong() error
+  Dispatch(MessageType, []byte) error
+  DispatchReader(MessageType, io.Reader) error
+
+  // for heartbeat monitor
+  RefreshPongTime()
+  KeepPing(int, int)
+
+  // for pool manage
+  Name() string
+  Group() string
+}
+```
+
+`Adapter` is mainly a restricted interface for `connection manage`, `message writing`, `heartbeat monitor` & `pool manage`.
+
+`Connection` satisfies the interface.
 
 ### 2. <span id="event-handler">EventHandler</span>
 
+```go
+type EventHandler interface {
+  Name() string // yes, name is necessary, it's ok to return ""
+  OnStatus(Status, Adapter)
+  OnMessage(*Message, Adapter)
+}
+```
 
+`EventHandler` is an interface for `Apply` a set of event handlers for the `Connection`.
 
-## Struct Reference
+1. `Name() string` is for event handler index, so you can __revoke__ this set of handlers. If there's only one `EventHandler` to apply, it's ok to return just `""`.
+2. `OnStatus(Status, Adapter)` will be triggered at the status change. `Status` will be the current status.
+3. `OnMessage(*Message, Adapter)` will be triggered when a message is received.
 
+## Configuration Reference
 
+### 1. Config
+
+```go
+type Config struct {
+  HeaderVerify func(http.Header) bool // verify http headers when upgrade connections
+
+  EnableStreams  bool // allow streaming for this connection
+  MaxStreams     int  // max streams this side can take. little one will be choosed.
+  ChunkSize      int  // max fragment payloa size
+  BufferSize     int  // buffer size for reading from connection
+  MaxPayloadSize int  // single data frame size limit
+  TriggerOnStart bool // message trigger on first fragment
+  Synchronize    bool // handlers will be triggered on the main goroutine with the Start
+
+  EnableCompress bool // allow compression for this connection
+  CompressLevel  int // compress level defined in deflate
+
+  Timeout *Timeout // all timeout configs
+
+  PingInterval int // how often to ping the other side
+
+  MagicKey    []byte // private magic key, default magic key will be used if not set
+  PrivateMask []byte // extra masking key
+  AlwaysMask  bool   // mask message even this is the server side
+}
+```
+
+### 2. Timeout
+
+```go
+type Timeout struct {
+  HandshakeTimeout int // max wait time for upgrading handshakes
+  
+  PongTimeout  int // max wait time for this side to receive a pong after ping
+  CloseTimeout int // max wait time for other side to send Close after this side send a Close
+}
+```
+
+### 3. ClientConfig
+
+```go
+type ClientConfig struct {
+  UseTLS    bool        // use TLS connection no matter the what's the url
+  TLSConfig *tls.Config // TLS config for this connection
+  ExtraHeaders map[string]string // extra http headers sent for upgrading
+}
+```
+
+### 4. DialConfig
+
+```go
+type DialConfig struct {
+	Config
+	ClientConfig
+}
+```
+
+`DialConfig` is for client Dial, combined with general webson `Config` & client only `ClientConfig`.
+
+### 5. PoolConfig
+
+```go
+type PoolConfig struct {
+  Name          string // use for connection apply
+  Size          int    // max connections the pool can hold, 0 to be unlimited
+  ClientRetry   int    // client retry count
+  RetryInterval int    // client retry interval
+}
+```
+
+### 6. NodeConfig
+
+```go
+type NodeConfig struct {
+  Name  string // node name, will be a random string if empty
+  Group string // node group
+}
+```
+
+NodeConfig is for node append in a pool
 
 ## Life Cycles
 
@@ -623,9 +785,35 @@ There are 4 status during the whole life cycle.
 
 In the long life cycle of a connection, the status may change from `StatusReady` to `StatusTimeout` and from `StatusTimeout` to `StatusReady` many times, which means `StatusTimeout` handler can be triggered multiple times, somehow, `StatusReady` is so special, `OnReady` will only be triggerer once at the beginning, and `OnStatus(StatusReady, func(prev Status, a Adapter))` can be triggered for multiple times, but you can tell from `prev ` status if this is changed from `StatusYetReady` or `StatusTimeout`.
 
-###  2. Data Cycle
+###  2. Message Cycle
 
+```
+            +                +
+            |      Ping      |
+         +> +---------------->
+         |  <----------------+
+         |  |      Pong      |
+         |  |                |
+  Ping   |  |    MsgChunks   |
+Interval |  +----------------> (if TriggerOnStart, OnMessage
+         |  |     ......     |  is triggered here)
+         |  |    (Finish)    |
+         |  +----------------> OnMessage
+         |  |                |
+         +> +---------------->
+ Pong    |  |     Ping       |
+Timeout  |  |                |
+         +> <----------------+
+            |     Pong       |
+            v                v
 
+```
+
+There's a `Ping` loop to send `Ping` message at every `Ping Interval`, the other side will respond a `Pong` by default. If the `Pong` is not received within `Pong Timeout`, a `StatusTimeout` will be triggered.
+
+`Ping` loop & `Pong` response is bond to the connection by default, but you can disable *Ping Loop* by setting `Config.PingInterval = -1` and replace `Pong` handler with `OnMessage`.
+
+One side can send many `MsgChunks` to other side, if not `Config.EnableStreams` , these `MsgChunks` will send sequentially in the connection, or else, there will be different `MsgChunks` from multiple messages sent sequentially in the connection.
 
 ## About
 

@@ -11,13 +11,17 @@ import (
 )
 
 type Adapter interface {
+	// for connection manage
 	Close()
+	// for message writing
 	Ping() error
 	Pong() error
 	Dispatch(MessageType, []byte) error
 	DispatchReader(MessageType, io.Reader) error
+	// for heartbeat monitor
 	RefreshPongTime()
 	KeepPing(int, int)
+	// for pool manage
 	Name() string
 	Group() string
 }
@@ -342,7 +346,7 @@ func (con *Connection) updateStatus(s Status) {
 	}
 
 	for _, handler := range con.eventPool {
-		go handler.OnStatus(prevStatus, con)
+		go handler.OnStatus(s, con)
 	}
 	return
 }
