@@ -11,20 +11,25 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		ws, e := webson.TakeOver(w, r, nil)
+	http.HandleFunc("/override", func(w http.ResponseWriter, r *http.Request) {
+		ws, e := webson.TakeOver(w, r, &webson.Config{
+			PingInterval: -1,
+		})
 		if e != nil {
 			return
 		}
-		ws.OnReady(func(a webson.Adapter) {
-			a.Dispatch(webson.TextMessage, []byte("hellflame"))
-		})
+
 		ws.OnStatus(webson.StatusClosed, func(s webson.Status, a webson.Adapter) {
 			fmt.Println("connection is closed")
 		})
-		ws.OnMessage(webson.TextMessage, func(m *webson.Message, a webson.Adapter) {
-			msg, _ := m.Read()
-			a.Dispatch(webson.TextMessage, append([]byte("recv: "), msg...))
+
+		ws.OnMessage(webson.PingMessage, func(m *webson.Message, a webson.Adapter) {
+			// send a binary instead of Pong
+			//a.Pong()
+			fmt.Println("ping recved")
+			if e := a.Dispatch(webson.BinaryMessage, nil); e != nil {
+				fmt.Println(e.Error())
+			}
 		})
 
 		// don't forget to Start
