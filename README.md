@@ -1,5 +1,7 @@
 # Webson
 
+[![GoDoc](https://godoc.org/github.com/hellflame/webson?status.svg)](https://godoc.org/github.com/hellflame/webson) [![Go Report Card](https://goreportcard.com/badge/github.com/hellflame/webson)](https://goreportcard.com/report/github.com/hellflame/webson)
+
 Webson is a event-driven websocket-compatible develepment kit for Golang. It's read `/'websən/` , meaning `Websocket-is-On`, `Websocket-and-so-On`. 
 
 Webson is not just a websocket sdk, but a __flexable__, __light-weight__, __event-driven__, __frame-based__ tcp development framework for golang. It's compatible with [websocket RFC6455](https://datatracker.ietf.org/doc/html/rfc6455) prividing client & server APIs, and it's upgraded to handle more complex scenarios among pure server side network applications.
