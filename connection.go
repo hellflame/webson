@@ -14,8 +14,6 @@ type Adapter interface {
 	// for connection manage
 	Close()
 	// for message writing
-	Ping() error
-	Pong() error
 	Dispatch(MessageType, []byte) error
 	DispatchReader(MessageType, io.Reader) error
 	// for heartbeat monitor
@@ -75,7 +73,8 @@ func (con *Connection) prepare() {
 
 	// bind default pong for ping
 	con.OnMessage(PingMessage, func(m *Message, a Adapter) {
-		a.Pong()
+		r, _ := m.Read()
+		a.Dispatch(PongMessage, r)
 	})
 	con.OnMessage(PongMessage, func(m *Message, a Adapter) {
 		a.RefreshPongTime()
@@ -111,8 +110,16 @@ func (con *Connection) cleanClose() {
 	}
 }
 
+func (con *Connection) CloseWithCode(c *CloseCode) {
+	con.Dispatch(CloseMessage, c.toBytes())
+	con.closeUpdate()
+}
+
 func (con *Connection) Close() {
-	con.Dispatch(CloseMessage, nil)
+	con.CloseWithCode(&CloseCode{NormalClosure, ""})
+}
+
+func (con *Connection) closeUpdate() {
 	con.statusLock.Lock()
 	if !con.startClose {
 		con.startClose = true
@@ -139,10 +146,6 @@ func (con *Connection) ReStart() error {
 func (con *Connection) Ping() error {
 	con.lastPing = time.Now()
 	return con.Dispatch(PingMessage, nil)
-}
-
-func (con *Connection) Pong() error {
-	return con.Dispatch(PongMessage, nil)
 }
 
 func (con *Connection) RefreshPongTime() {
@@ -397,8 +400,9 @@ func (con *Connection) Start() error {
 				isFromClient: !con.isClient,
 			},
 		}
-		if e := msg.parseMeta(vessel2); e != nil {
-			return e
+		if closeCode := msg.parseMeta(vessel2); closeCode != nil {
+			con.CloseWithCode(closeCode)
+			return errors.New("malformed meta")
 		}
 		if msg.receive.size == 126 {
 			if s, e := reader.Read(vessel2); e != nil || s != 2 {

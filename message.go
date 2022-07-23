@@ -30,6 +30,45 @@ const (
 	PongMessage = MessageType(10)
 )
 
+type CloseCode struct {
+	Code   int
+	Reason string
+}
+
+const (
+	NormalClosure      = 1000
+	GoingAway          = 1001
+	ProtocolError      = 1002
+	UnsupportedData    = 1003
+	NoStatusReceived   = 1005
+	AbnormalClosure    = 1006
+	InvalidPayload     = 1007
+	PolicyViolation    = 1008
+	MessageTooBig      = 1009
+	MandatoryExtension = 1010
+	InternalServerErr  = 1011
+	ServiceRestart     = 1012
+	TryAgainLater      = 1013
+	TLSHandshake       = 1015
+)
+
+func (c *CloseCode) toBytes() []byte {
+	vessel := make([]byte, len(c.Reason)+2)
+	binary.BigEndian.PutUint16(vessel, uint16(c.Code))
+	copy(vessel[2:], []byte(c.Reason))
+	return vessel
+}
+
+func ParseCloseCode(raw []byte) *CloseCode {
+	if raw == nil || len(raw) < 2 {
+		return nil
+	}
+	return &CloseCode{
+		Code:   int(binary.BigEndian.Uint16(raw[:2])),
+		Reason: string(raw[2:]),
+	}
+}
+
 type msgSendOptions struct {
 	doCompress    bool
 	compressLevel int
@@ -201,7 +240,7 @@ func (m *Message) assemble() error {
 	return e
 }
 
-func (m *Message) parseMeta(raw []byte) error {
+func (m *Message) parseMeta(raw []byte) *CloseCode {
 	msgType := raw[0] & 0b0000_1111
 	fin_ := raw[0]&0b1000_0000 != 0
 	rsv1 := raw[0]&0b0100_0000 != 0
@@ -212,26 +251,26 @@ func (m *Message) parseMeta(raw []byte) error {
 
 	if msgType >= 8 {
 		if !fin_ {
-			return errors.New("control frame is not complete")
+			return &CloseCode{ProtocolError, "control frame is not complete"}
 		}
 		if size > 125 {
-			return errors.New("control frame is too large")
+			return &CloseCode{MessageTooBig, "control frame is too large"}
 		}
 	}
 	if msgType == 0 && fin_ {
-		return errors.New("unrecognized fin or continue")
+		return &CloseCode{ProtocolError, "unrecognized fin or continue"}
 	}
 	if rsv1 && !m.config.negotiate.compressable {
-		return errors.New("unrecognized rsv1")
+		return &CloseCode{ProtocolError, "unrecognized rsv1"}
 	}
 	if rsv2 && !m.config.negotiate.streamable {
-		return errors.New("unrecognized rsv2")
+		return &CloseCode{ProtocolError, "unrecognized rsv2"}
 	}
 	if rsv3 {
-		return errors.New("unrecognized rsv3")
+		return &CloseCode{ProtocolError, "unrecognized rsv3"}
 	}
 	if m.receive.isFromClient && !mskd {
-		return errors.New("client msg is not masked")
+		return &CloseCode{ProtocolError, "client msg is not masked"}
 	}
 	m.Type = MessageType(msgType)
 	m.isComplete = fin_
@@ -240,7 +279,7 @@ func (m *Message) parseMeta(raw []byte) error {
 	m.receive.masked = mskd
 	m.receive.size = size
 	if m.receive.isStream && m.receive.size < streamBytes {
-		return errors.New("msg size too small to contain stream id")
+		return &CloseCode{ProtocolError, "msg size too small to contain stream id"}
 	}
 	return nil
 }
