@@ -13,7 +13,9 @@ import (
 type Adapter interface {
 	// for connection manage
 	Close()
+	CloseWithCode(*CloseCode)
 	// for message writing
+	Ping() error
 	Dispatch(MessageType, []byte) error
 	DispatchReader(MessageType, io.Reader) error
 	// for heartbeat monitor
